@@ -1,5 +1,5 @@
 import { BoundType } from "../core/bound-type";
-import { Range } from "../range/range";
+import { NumberRange } from "../number-range/number-range";
 import { RangeMap } from "./range-map";
 import { isEqual } from "lodash-es";
 
@@ -8,8 +8,8 @@ describe("RangeMap", () => {
     it("should handle non-overlapping ranges and values", () => {
       const rangeMap = new RangeMap<string>();
 
-      rangeMap.put(Range.closedOpen(1, 3), "a");
-      rangeMap.put(Range.closedOpen(4, 6), "b");
+      rangeMap.put(NumberRange.closedOpen(1, 3), "a");
+      rangeMap.put(NumberRange.closedOpen(4, 6), "b");
 
       const result = Array.from(rangeMap.asMapOfRanges().entries());
 
@@ -25,8 +25,8 @@ describe("RangeMap", () => {
     it("should handle overlapping ranges and values", () => {
       const rangeMap = new RangeMap<string>();
 
-      rangeMap.put(Range.closedOpen(1, 3), "a");
-      rangeMap.put(Range.closedOpen(2, 6), "b");
+      rangeMap.put(NumberRange.closedOpen(1, 3), "a");
+      rangeMap.put(NumberRange.closedOpen(2, 6), "b");
 
       const result = Array.from(rangeMap.asMapOfRanges().entries());
 
@@ -42,8 +42,8 @@ describe("RangeMap", () => {
     it("should handle enclosed ranges", () => {
       const rangeMap = new RangeMap<string>();
 
-      rangeMap.put(Range.closedOpen(1, 10), "a");
-      rangeMap.put(Range.closedOpen(3, 6), "b");
+      rangeMap.put(NumberRange.closedOpen(1, 10), "a");
+      rangeMap.put(NumberRange.closedOpen(3, 6), "b");
 
       const result = Array.from(rangeMap.asMapOfRanges().entries());
 
@@ -62,10 +62,10 @@ describe("RangeMap", () => {
     it("should handle complex behavior", () => {
       const rangeMap = new RangeMap<string>();
 
-      rangeMap.put(Range.upTo(8, BoundType.CLOSED), "a");
-      rangeMap.put(Range.closedOpen(3, 6), "b");
-      rangeMap.put(Range.closedOpen(8, 12), "c");
-      rangeMap.put(Range.atLeast(18), "e");
+      rangeMap.put(NumberRange.upTo(8, BoundType.CLOSED), "a");
+      rangeMap.put(NumberRange.closedOpen(3, 6), "b");
+      rangeMap.put(NumberRange.closedOpen(8, 12), "c");
+      rangeMap.put(NumberRange.atLeast(18), "e");
 
       expect(rangeMap.get(2)).toBe("a");
       expect(rangeMap.get(3)).toBe("b");
@@ -82,8 +82,8 @@ describe("RangeMap", () => {
       it("should handle non-overlapping ranges and values", () => {
         const rangeMap = new RangeMap<string>();
 
-        rangeMap.putCoalescing(Range.closedOpen(1, 3), "a");
-        rangeMap.putCoalescing(Range.closedOpen(4, 6), "b");
+        rangeMap.putCoalescing(NumberRange.closedOpen(1, 3), "a");
+        rangeMap.putCoalescing(NumberRange.closedOpen(4, 6), "b");
 
         const result = Array.from(rangeMap.asMapOfRanges().entries());
 
@@ -99,8 +99,8 @@ describe("RangeMap", () => {
       it("should handle overlapping ranges and values", () => {
         const rangeMap = new RangeMap<string>();
 
-        rangeMap.putCoalescing(Range.closedOpen(1, 3), "a");
-        rangeMap.putCoalescing(Range.closedOpen(2, 6), "b");
+        rangeMap.putCoalescing(NumberRange.closedOpen(1, 3), "a");
+        rangeMap.putCoalescing(NumberRange.closedOpen(2, 6), "b");
 
         const result = Array.from(rangeMap.asMapOfRanges().entries());
 
@@ -115,8 +115,8 @@ describe("RangeMap", () => {
       it("should handle enclosed ranges", () => {
         const rangeMap = new RangeMap<string>();
 
-        rangeMap.putCoalescing(Range.closedOpen(1, 10), "a");
-        rangeMap.putCoalescing(Range.closedOpen(3, 6), "b");
+        rangeMap.putCoalescing(NumberRange.closedOpen(1, 10), "a");
+        rangeMap.putCoalescing(NumberRange.closedOpen(3, 6), "b");
 
         const result = Array.from(rangeMap.asMapOfRanges().entries());
 
@@ -134,8 +134,8 @@ describe("RangeMap", () => {
       it("should handle enclosing ranges", () => {
         const rangeMap = new RangeMap<string>();
 
-        rangeMap.putCoalescing(Range.closedOpen(3, 6), "b");
-        rangeMap.putCoalescing(Range.closedOpen(1, 10), "a");
+        rangeMap.putCoalescing(NumberRange.closedOpen(3, 6), "b");
+        rangeMap.putCoalescing(NumberRange.closedOpen(1, 10), "a");
 
         const result = Array.from(rangeMap.asMapOfRanges().entries());
 
@@ -147,10 +147,10 @@ describe("RangeMap", () => {
       it("should handle complex behavior", () => {
         const rangeMap = new RangeMap<string>();
 
-        rangeMap.putCoalescing(Range.upTo(8, BoundType.CLOSED), "a");
-        rangeMap.putCoalescing(Range.closedOpen(3, 6), "b");
-        rangeMap.putCoalescing(Range.closedOpen(8, 12), "c");
-        rangeMap.putCoalescing(Range.atLeast(18), "e");
+        rangeMap.putCoalescing(NumberRange.upTo(8, BoundType.CLOSED), "a");
+        rangeMap.putCoalescing(NumberRange.closedOpen(3, 6), "b");
+        rangeMap.putCoalescing(NumberRange.closedOpen(8, 12), "c");
+        rangeMap.putCoalescing(NumberRange.atLeast(18), "e");
 
         expect(rangeMap.get(2)).toBe("a");
         expect(rangeMap.get(3)).toBe("b");
@@ -166,8 +166,8 @@ describe("RangeMap", () => {
       it("should not combine non-connecting ranges", () => {
         const rangeMap = new RangeMap<string>();
 
-        rangeMap.putCoalescing(Range.closedOpen(1, 3), "a");
-        rangeMap.putCoalescing(Range.closedOpen(4, 6), "a");
+        rangeMap.putCoalescing(NumberRange.closedOpen(1, 3), "a");
+        rangeMap.putCoalescing(NumberRange.closedOpen(4, 6), "a");
 
         const result = Array.from(rangeMap.asMapOfRanges().entries());
 
@@ -182,8 +182,8 @@ describe("RangeMap", () => {
       it("should combine overlapping ranges and values", () => {
         const rangeMap = new RangeMap<string>();
 
-        rangeMap.putCoalescing(Range.closedOpen(1, 3), "a");
-        rangeMap.putCoalescing(Range.closedOpen(2, 6), "a");
+        rangeMap.putCoalescing(NumberRange.closedOpen(1, 3), "a");
+        rangeMap.putCoalescing(NumberRange.closedOpen(2, 6), "a");
 
         const result = Array.from(rangeMap.asMapOfRanges().entries());
 
@@ -195,8 +195,8 @@ describe("RangeMap", () => {
       it("should handle enclosed ranges", () => {
         const rangeMap = new RangeMap<string>();
 
-        rangeMap.putCoalescing(Range.closedOpen(1, 10), "a");
-        rangeMap.putCoalescing(Range.closedOpen(3, 6), "a");
+        rangeMap.putCoalescing(NumberRange.closedOpen(1, 10), "a");
+        rangeMap.putCoalescing(NumberRange.closedOpen(3, 6), "a");
 
         const result = Array.from(rangeMap.asMapOfRanges().entries());
 
@@ -208,8 +208,8 @@ describe("RangeMap", () => {
       it("should filter out empty ranges", () => {
         const rangeMap = new RangeMap<string>();
 
-        rangeMap.putCoalescing(Range.closedOpen(0, 24), "a");
-        rangeMap.putCoalescing(Range.closedOpen(0, 6), "b");
+        rangeMap.putCoalescing(NumberRange.closedOpen(0, 24), "a");
+        rangeMap.putCoalescing(NumberRange.closedOpen(0, 6), "b");
 
         const result = Array.from(rangeMap.asMapOfRanges().entries());
 
@@ -226,14 +226,14 @@ describe("RangeMap", () => {
     it("should work", () => {
       const rangeMap = new RangeMap();
 
-      rangeMap.putCoalescing(Range.closedOpen(2, 10), 4);
-      rangeMap.putCoalescing(Range.closedOpen(13, 16), 4);
-      rangeMap.putCoalescing(Range.closedOpen(3, 12), 3);
+      rangeMap.putCoalescing(NumberRange.closedOpen(2, 10), 4);
+      rangeMap.putCoalescing(NumberRange.closedOpen(13, 16), 4);
+      rangeMap.putCoalescing(NumberRange.closedOpen(3, 12), 3);
 
       const result = rangeMap.asMapOfValues();
 
-      const result3 = result.get(3) as Range[];
-      const result4 = result.get(4) as Range[];
+      const result3 = result.get(3) as NumberRange[];
+      const result4 = result.get(4) as NumberRange[];
 
       expect(result4.length).toBe(2);
       expect(result4[0].toString()).toBe("[2..3)");
@@ -247,15 +247,15 @@ describe("RangeMap", () => {
     it("should work", () => {
       const rangeMap = new RangeMap();
 
-      rangeMap.putCoalescing(Range.closedOpen(2, 10), 4);
-      rangeMap.putCoalescing(Range.closedOpen(13, 16), 4);
-      rangeMap.putCoalescing(Range.closedOpen(3, 12), 3);
+      rangeMap.putCoalescing(NumberRange.closedOpen(2, 10), 4);
+      rangeMap.putCoalescing(NumberRange.closedOpen(13, 16), 4);
+      rangeMap.putCoalescing(NumberRange.closedOpen(3, 12), 3);
 
-      const subRangeMap = rangeMap.subRangeMap(Range.closedOpen(2.5, 11));
+      const subRangeMap = rangeMap.subRangeMap(NumberRange.closedOpen(2.5, 11));
       const result = subRangeMap.asMapOfValues();
 
-      const result3 = result.get(3) as Range[];
-      const result4 = result.get(4) as Range[];
+      const result3 = result.get(3) as NumberRange[];
+      const result4 = result.get(4) as NumberRange[];
 
       expect(result4.length).toBe(1);
       expect(result4[0].toString()).toBe("[2.5..3)");
@@ -292,11 +292,11 @@ describe("README example", () => {
     ];
 
     // Init with empty array
-    festivalAttendanceRangeMap.putCoalescing(Range.closedOpen(1, 5), []);
+    festivalAttendanceRangeMap.putCoalescing(NumberRange.closedOpen(1, 5), []);
 
     attendance.forEach(({ name, days }) => {
       days.forEach((day) => {
-        const dayRange = Range.closedOpen(day, day + 1);
+        const dayRange = NumberRange.closedOpen(day, day + 1);
         const subRangeMap = festivalAttendanceRangeMap
           .subRangeMap(dayRange)
           .asMapOfRanges();
@@ -312,9 +312,9 @@ describe("README example", () => {
     const result = festivalAttendanceRangeMap.asMapOfRanges();
 
     expect([...result.entries()]).toEqual([
-      [Range.closedOpen(1, 2), ["Bob", "Lisa", "Eve"]],
-      [Range.closedOpen(2, 4), ["Bob", "Lisa"]],
-      [Range.closedOpen(4, 5), ["Bob", "Eve"]],
+      [NumberRange.closedOpen(1, 2), ["Bob", "Lisa", "Eve"]],
+      [NumberRange.closedOpen(2, 4), ["Bob", "Lisa"]],
+      [NumberRange.closedOpen(4, 5), ["Bob", "Eve"]],
     ]);
   });
 });

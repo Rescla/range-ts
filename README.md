@@ -7,11 +7,11 @@ Typescript ranges based on Guava RangeMap.
 
 ## Concepts
 
-### Range
+### NumberRange
 
-Defines a range between two values defined by Numbers and Bound Types.
+Defines a range between two values defined by Numbers and Bound Types. The name NumberRange is used to distinguish from the DOM Range class.
 
-The Range class has a toString to aid in readability. The `[]` and `()` symbols are used to indicate a Closed and Open bound type respectively. Some examples:
+The NumberRange class has a toString to aid in readability. The `[]` and `()` symbols are used to indicate a Closed and Open bound type respectively. Some examples:
 
 | toString() | Definition             |
 | ---------- | ---------------------- |
@@ -30,13 +30,13 @@ To define a full day, ClosedOpen can be used.
 const now = new Date(); // Sun Jan 03 2021 13:47:28    1609678048377
 const dayStart = startOfDay(now); // Sun Jan 03 2021 00:00:00    1609628400000
 const nextDayStart = addDays(dayStart, 1); // Mon Jan 04 2021 00:00:00    1609714800000
-Range.closedOpen(dayStart, nextDayStart); // [1609628400000..1609714800000)
+NumberRange.closedOpen(dayStart, nextDayStart); // [1609628400000..1609714800000)
 ```
 
 Depending on your domain decisions you might serialize it like this:
 
 ```typescript
-const range = Range.closedOpen(1609628400000, 1609714800000);
+const range = NumberRange.closedOpen(1609628400000, 1609714800000);
 
 return {
   startDate: format(range.lowerEndpoint, "yyyy-MM-dd"), // Note the unicode tokens used by format in dateFns v2 (https://github.com/date-fns/date-fns/blob/master/docs/unicodeTokens.md)
@@ -93,7 +93,7 @@ festivalAttendanceRangeMap.putCoalescing(Range.closedOpen(1, 5), []);
 // Iterate over each attendance
 attendance.forEach(({ name, days }) => {
   days.forEach((day) => {
-    const dayRange = Range.closedOpen(day, day + 1);
+    const dayRange = NumberRange.closedOpen(day, day + 1);
     const subRangeMap = festivalAttendanceRangeMap
       .subRangeMap(dayRange)
       .asMapOfRanges();
@@ -109,9 +109,9 @@ attendance.forEach(({ name, days }) => {
 const result = festivalAttendanceRangeMap.asMapOfRanges();
 
 expect([...result.entries()]).toEqual([
-  [Range.closedOpen(1, 2), ["Bob", "Lisa", "Eve"]],
-  [Range.closedOpen(2, 4), ["Bob", "Lisa"]],
-  [Range.closedOpen(4, 5), ["Bob", "Eve"]],
+  [NumberRange.closedOpen(1, 2), ["Bob", "Lisa", "Eve"]],
+  [NumberRange.closedOpen(2, 4), ["Bob", "Lisa"]],
+  [NumberRange.closedOpen(4, 5), ["Bob", "Eve"]],
 ]);
 ```
 

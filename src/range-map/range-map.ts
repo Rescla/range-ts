@@ -1,8 +1,8 @@
-import { Range } from "../range/range";
+import { NumberRange } from "../number-range/number-range";
 import { BoundType } from "../core/bound-type";
 
 export interface RangeValue<T> {
-  range: Range;
+  range: NumberRange;
   value: T;
 }
 
@@ -20,11 +20,11 @@ export class RangeMap<T> {
 
   constructor(private eq: (a: T, b: T) => boolean = (a, b) => a === b) {}
 
-  put(range: Range, value: T): void {
+  put(range: NumberRange, value: T): void {
     this.combinedPut(range, value, false);
   }
 
-  putCoalescing(range: Range, value: T): void {
+  putCoalescing(range: NumberRange, value: T): void {
     this.combinedPut(range, value, true);
   }
 
@@ -44,7 +44,7 @@ export class RangeMap<T> {
   /**
    * Returns a sorted copy of current values in this RangeMap
    */
-  asMapOfRanges(): Map<Range, T> {
+  asMapOfRanges(): Map<NumberRange, T> {
     const newMap = new Map();
     this.rangeValues
       .filter((range) => !range.range.isEmpty())
@@ -61,7 +61,7 @@ export class RangeMap<T> {
   /**
    * Returns a sorted map with the provided value as the key
    */
-  asMapOfValues(): Map<T, Range[]> {
+  asMapOfValues(): Map<T, NumberRange[]> {
     const newMap = new Map();
     this.rangeValues
       .filter((range) => !range.range.isEmpty())
@@ -82,7 +82,7 @@ export class RangeMap<T> {
   /**
    * Returns a view of the part of this range map that intersects with range.
    */
-  subRangeMap(range: Range): RangeMap<T> {
+  subRangeMap(range: NumberRange): RangeMap<T> {
     const rangeValues = this.rangeValues.flatMap((rangeValue) => {
       const intersection = rangeValue.range.intersection(range);
 
@@ -104,7 +104,7 @@ export class RangeMap<T> {
   /**
    * Returns the range containing this key and its associated value, if such a range is present in the range map, or null otherwise.
    */
-  getEntry(key: number): [Range, T] | null {
+  getEntry(key: number): [NumberRange, T] | null {
     const foundRangeValue = this.rangeValues.find((currentRangeValue) =>
       currentRangeValue.range.contains(key)
     );
@@ -117,7 +117,7 @@ export class RangeMap<T> {
   /**
    * Returns the minimal range enclosing the ranges in this RangeMap.
    */
-  span(): Range | null {
+  span(): NumberRange | null {
     if (this.rangeValues.length === 0) {
       return null;
     }
@@ -127,7 +127,7 @@ export class RangeMap<T> {
         a.range.lowerEndpoint.valueOf() - b.range.lowerEndpoint.valueOf()
     );
 
-    return new Range(
+    return new NumberRange(
       sortedRangeValues[0].range.lowerEndpoint,
       sortedRangeValues[0].range.lowerBoundType,
       sortedRangeValues[sortedRangeValues.length - 1].range.upperEndpoint,
@@ -136,11 +136,11 @@ export class RangeMap<T> {
   }
 
   private combinedPut(
-    range: Range,
+    range: NumberRange,
     value: T,
     shouldPutCoalescing: boolean = false
   ): void {
-    let newRange: Range = range;
+    let newRange: NumberRange = range;
     let affectedRangeValues: RangeValue<T>[] = [];
     const unaffectedRangeValues: RangeValue<T>[] = [];
 
@@ -160,7 +160,7 @@ export class RangeMap<T> {
       }
 
       const rangeBefore = currentRangeValue.range.intersection(
-        Range.upTo(
+        NumberRange.upTo(
           newRange.lowerEndpoint,
           newRange.lowerBoundType === BoundType.OPEN
             ? BoundType.CLOSED
@@ -168,7 +168,7 @@ export class RangeMap<T> {
         )
       );
       const rangeAfter = currentRangeValue.range.intersection(
-        new Range(
+        new NumberRange(
           newRange.upperEndpoint,
           newRange.upperBoundType === BoundType.OPEN
             ? BoundType.CLOSED
@@ -179,9 +179,9 @@ export class RangeMap<T> {
       );
 
       // Create new range values for any ranges that are not overlapped by the new range value
-      return ([rangeBefore, rangeAfter] as Range[])
+      return ([rangeBefore, rangeAfter] as NumberRange[])
         .filter((a) => !!a)
-        .map((currentRange: Range) => ({
+        .map((currentRange: NumberRange) => ({
           range: currentRange,
           value: currentRangeValue.value,
         }));

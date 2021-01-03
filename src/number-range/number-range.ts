@@ -7,7 +7,7 @@ import { Comparable } from "../core/comparable";
  *
  * Based off of https://guava.dev/releases/19.0/api/docs/com/google/common/collect/Range.html#intersection(com.google.common.collect.Range)
  */
-export class Range {
+export class NumberRange {
   constructor(
     public lowerEndpoint: Comparable,
     public lowerBoundType: BoundType,
@@ -18,29 +18,29 @@ export class Range {
   /**
    * Returns a range that contains all values greater than or equal to lower and strictly less than upper.
    */
-  static closedOpen(lower: Comparable, upper: Comparable): Range {
-    return new Range(lower, BoundType.CLOSED, upper, BoundType.OPEN);
+  static closedOpen(lower: Comparable, upper: Comparable): NumberRange {
+    return new NumberRange(lower, BoundType.CLOSED, upper, BoundType.OPEN);
   }
 
   /**
    * Returns a range that contains all values greater than or equal to lower and less than or equal to upper.
    */
-  static closed(lower: Comparable, upper: Comparable): Range {
-    return new Range(lower, BoundType.CLOSED, upper, BoundType.CLOSED);
+  static closed(lower: Comparable, upper: Comparable): NumberRange {
+    return new NumberRange(lower, BoundType.CLOSED, upper, BoundType.CLOSED);
   }
 
   /**
    * Returns a range that contains all values strictly greater than lower and strictly less than upper.
    */
-  static open(lower: Comparable, upper: Comparable): Range {
-    return new Range(lower, BoundType.OPEN, upper, BoundType.OPEN);
+  static open(lower: Comparable, upper: Comparable): NumberRange {
+    return new NumberRange(lower, BoundType.OPEN, upper, BoundType.OPEN);
   }
 
   /**
    * Returns a range that contains every value.
    */
-  static all(): Range {
-    return new Range(
+  static all(): NumberRange {
+    return new NumberRange(
       Number.NEGATIVE_INFINITY,
       BoundType.OPEN,
       Number.POSITIVE_INFINITY,
@@ -51,8 +51,8 @@ export class Range {
   /**
    * Returns a range that contains all values greater than or equal to endpoint.
    */
-  static atLeast(endpoint: Comparable): Range {
-    return new Range(
+  static atLeast(endpoint: Comparable): NumberRange {
+    return new NumberRange(
       endpoint,
       BoundType.CLOSED,
       Number.POSITIVE_INFINITY,
@@ -63,8 +63,8 @@ export class Range {
   /**
    * Returns a range that contains all values less than or equal to endpoint.
    */
-  static atMost(endpoint: Comparable): Range {
-    return new Range(
+  static atMost(endpoint: Comparable): NumberRange {
+    return new NumberRange(
       Number.NEGATIVE_INFINITY,
       BoundType.OPEN,
       endpoint,
@@ -75,8 +75,8 @@ export class Range {
   /**
    * Returns a range from the given endpoint, which may be either inclusive (closed) or exclusive (open), with no upper bound.
    */
-  static downTo(endpoint: Comparable, boundType: BoundType): Range {
-    return new Range(
+  static downTo(endpoint: Comparable, boundType: BoundType): NumberRange {
+    return new NumberRange(
       endpoint,
       boundType,
       Number.POSITIVE_INFINITY,
@@ -87,8 +87,8 @@ export class Range {
   /**
    * Returns a range with no lower bound up to the given endpoint, which may be either inclusive (closed) or exclusive (open).
    */
-  static upTo(endpoint: Comparable, boundType: BoundType): Range {
-    return new Range(
+  static upTo(endpoint: Comparable, boundType: BoundType): NumberRange {
+    return new NumberRange(
       Number.NEGATIVE_INFINITY,
       BoundType.OPEN,
       endpoint,
@@ -114,7 +114,7 @@ export class Range {
   /**
    * Returns true if the bounds of other do not extend outside the bounds of this range.
    */
-  encloses(other: Range): boolean {
+  encloses(other: NumberRange): boolean {
     const lowerEndpointEnclosed =
       this.lowerBoundType === BoundType.OPEN
         ? this.contains(other.lowerEndpoint) ||
@@ -131,7 +131,7 @@ export class Range {
   /**
    * Returns true if the ranges overlap in any way
    */
-  overlaps(other: Range): boolean {
+  overlaps(other: NumberRange): boolean {
     const intersection = this.intersection(other);
     return (intersection && !intersection.isEmpty()) ?? false;
   }
@@ -139,7 +139,7 @@ export class Range {
   /**
    * Returns the maximal range enclosed by both this range and connectedRange, if such a range exists.
    */
-  intersection(other: Range): Range | null {
+  intersection(other: NumberRange): NumberRange | null {
     if (!this.isConnected(other)) {
       return null;
     }
@@ -172,7 +172,7 @@ export class Range {
       upperBoundType = upperRange.upperBoundType;
     }
 
-    return new Range(
+    return new NumberRange(
       lowerRange.lowerEndpoint,
       lowerBoundType,
       upperRange.upperEndpoint,
@@ -183,7 +183,7 @@ export class Range {
   /**
    * Returns true if there exists a (possibly empty) range which is enclosed by both this range and other.
    */
-  isConnected(other: Range): boolean {
+  isConnected(other: NumberRange): boolean {
     return (
       this.contains(other.lowerEndpoint) ||
       this.contains(other.upperEndpoint) ||
@@ -206,7 +206,7 @@ export class Range {
   /**
    * Returns the minimal range that encloses both this range and other.
    */
-  span(other: Range): Range {
+  span(other: NumberRange): NumberRange {
     // Determine outer ranges
     const lowerRange = this.lowerEndpoint <= other.lowerEndpoint ? this : other;
     const upperRange = this.upperEndpoint >= other.upperEndpoint ? this : other;
@@ -235,7 +235,7 @@ export class Range {
       upperBoundType = upperRange.upperBoundType;
     }
 
-    return new Range(
+    return new NumberRange(
       lowerRange.lowerEndpoint,
       lowerBoundType,
       upperRange.upperEndpoint,
