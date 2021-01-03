@@ -51,7 +51,11 @@ module.exports = function (config) {
         rules: [
           {
             test: /\.js$/,
-            exclude: [require("path").resolve(__dirname, "test")],
+            exclude: [
+              /test\.js$/,
+              require("path").resolve(__dirname, "../node_modules"),
+              /\.spec\.js$/,
+            ],
             enforce: "post",
             use: {
               loader: "istanbul-instrumenter-loader",
