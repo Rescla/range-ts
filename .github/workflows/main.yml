@@ -25,10 +25,24 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
 
-      # Runs a single command using the runners shell
       - name: Npm ci
         run: npm ci
+
+      - name: Codeclimate before build
+        env:
+          CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
+        run: |
+          curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
+          chmod +x ./cc-test-reporter
+          ./cc-test-reporter before-build
 
       # Runs a single command using the runners shell
       - name: Run build
         run: npm run build
+
+      - name: Codeclimate after build
+        env: # Or as an environment variable
+          CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
+        run: |
+          ./cc-test-reporter format-coverage .tmp/coverage/lcov.info -o .tmp/coverage/codeclimate.json
+          ./cc-test-reporter upload-coverage -i .tmp/coverage/codeclimate.json
