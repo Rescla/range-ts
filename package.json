@@ -1,0 +1,21 @@
+{
+  "name": "range-ts",
+  "version": "0.1.0",
+  "description": "RangeMap implementation based on Guava",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rescla/range-ts.git"
+  },
+  "keywords": [
+    "RangeTS",
+    "Guava",
+    "RangeMap",
+    "Range"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Marc Fokkert <marcfokkert@xz1.nl>",
+  "license": "Apache-2.0"
+}
