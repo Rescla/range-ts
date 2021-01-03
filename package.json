@@ -18,9 +18,10 @@
   ],
   "scripts": {
     "build:clean": "shx rm -rf ./dist",
-    "compile": "tsc -b ./src/tsconfig.cjs.json ./src/tsconfig.esm.json ./src/tsconfig.esm5.json ./src/tsconfig.types.json",
-    "build": "npm-run-all build:clean compile",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "compile": "tsc -b ./src/tsconfig.cjs.json ./src/tsconfig.esm.json ./src/tsconfig.esm5.json ./src/tsconfig.types.json ./src/tsconfig.karma.json",
+    "build": "npm-run-all build:clean compile test",
+    "test": "karma start src/karma.conf.js --single-run --no-auto-watch --browsers ChromeHeadless --reporters kjhtml,junit,coverage-istanbul",
+    "test-dev": "karma start src/karma.conf.js"
   },
   "author": "Marc Fokkert <marcfokkert@xz1.nl>",
   "license": "Apache-2.0",
@@ -28,14 +29,26 @@
     "tslib": "^2.0.3"
   },
   "devDependencies": {
-    "@types/lodash-es": "^4.17.4",
+    "@types/jasmine": "^3.6.2",
     "husky": "4.3.5",
+    "istanbul-instrumenter-loader": "^3.0.1",
     "jasmine": "^3.6.3",
+    "karma": "^5.2.3",
+    "karma-chrome-launcher": "^3.1.0",
+    "karma-coverage-istanbul-reporter": "^3.0.3",
+    "karma-jasmine": "^4.0.1",
+    "karma-jasmine-html-reporter": "^1.5.4",
+    "karma-junit-reporter": "^2.0.1",
+    "karma-sourcemap-loader": "^0.3.8",
+    "karma-typescript": "^5.2.0",
+    "karma-typescript-es6-transform": "^5.2.0",
+    "karma-webpack": "^4.0.2",
     "npm-run-all": "^4.1.5",
     "prettier": "2.2.1",
     "pretty-quick": "3.1.0",
     "shx": "^0.3.3",
-    "typescript": "^4.1.3"
+    "typescript": "^4.1.3",
+    "webpack": "^4.0.0"
   },
   "husky": {
     "hooks": {

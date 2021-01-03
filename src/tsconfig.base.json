@@ -4,5 +4,6 @@
     "noEmit": false,
     "baseUrl": "."
   },
-  "include": ["./**/*.ts"]
+  "include": ["./**/*.ts"],
+  "exclude": ["./**/*.spec.ts", "test.ts"]
 }
