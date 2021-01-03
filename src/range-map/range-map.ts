@@ -9,11 +9,16 @@ export interface RangeValue<T> {
 export class RangeMap<T> {
   private rangeValues: RangeValue<T>[] = [];
 
-  private static fromRangeValues<T>(values: RangeValue<T>[]): RangeMap<T> {
-    const rangeMap = new RangeMap<T>();
+  private static fromRangeValues<T>(
+    values: RangeValue<T>[],
+    eq?: (a: T, b: T) => boolean
+  ): RangeMap<T> {
+    const rangeMap = new RangeMap<T>(eq);
     rangeMap.rangeValues = values;
     return rangeMap;
   }
+
+  constructor(private eq: (a: T, b: T) => boolean = (a, b) => a === b) {}
 
   put(range: Range, value: T): void {
     this.combinedPut(range, value, false);
@@ -148,7 +153,7 @@ export class RangeMap<T> {
     });
 
     affectedRangeValues = affectedRangeValues.flatMap((currentRangeValue) => {
-      if (shouldPutCoalescing && value === currentRangeValue.value) {
+      if (shouldPutCoalescing && this.eq(value, currentRangeValue.value)) {
         // Should expand new range instead of inserting current
         newRange = newRange.span(currentRangeValue.range);
         return [];

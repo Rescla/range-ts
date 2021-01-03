@@ -1,6 +1,7 @@
 import { BoundType } from "../core/bound-type";
 import { Range } from "../range/range";
 import { RangeMap } from "./range-map";
+import { isEqual } from "lodash-es";
 
 describe("RangeMap", () => {
   describe("put", () => {
@@ -261,5 +262,59 @@ describe("RangeMap", () => {
       expect(result3.length).toBe(1);
       expect(result3[0].toString()).toBe("[3..11)");
     });
+  });
+});
+
+describe("README example", () => {
+  // Example input domain object
+  interface Attendance {
+    name: string;
+    days: number[];
+  }
+
+  it("should work", () => {
+    // The festival spans 4 days, from day 1 until day 4. Or [1..5)
+    // IsEqual is used to handle array equality for putCoalescing
+    const festivalAttendanceRangeMap = new RangeMap<string[]>(isEqual);
+    const attendance: Attendance[] = [
+      {
+        name: "Bob",
+        days: [1, 2, 3, 4],
+      },
+      {
+        name: "Lisa",
+        days: [1, 2, 3],
+      },
+      {
+        name: "Eve",
+        days: [4, 1],
+      },
+    ];
+
+    // Init with empty array
+    festivalAttendanceRangeMap.putCoalescing(Range.closedOpen(1, 5), []);
+
+    attendance.forEach(({ name, days }) => {
+      days.forEach((day) => {
+        const dayRange = Range.closedOpen(day, day + 1);
+        const subRangeMap = festivalAttendanceRangeMap
+          .subRangeMap(dayRange)
+          .asMapOfRanges();
+
+        // Iterate over all existing entries for the given day
+        // Not really necessary in this example, but this will handle any periods that do not span the entire day as well
+        [...subRangeMap.entries()].forEach(([key, value]) => {
+          festivalAttendanceRangeMap.putCoalescing(key, [...value, name]);
+        });
+      });
+    });
+
+    const result = festivalAttendanceRangeMap.asMapOfRanges();
+
+    expect([...result.entries()]).toEqual([
+      [Range.closedOpen(1, 2), ["Bob", "Lisa", "Eve"]],
+      [Range.closedOpen(2, 4), ["Bob", "Lisa"]],
+      [Range.closedOpen(4, 5), ["Bob", "Eve"]],
+    ]);
   });
 });
