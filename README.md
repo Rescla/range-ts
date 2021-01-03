@@ -5,6 +5,14 @@
 
 Typescript ranges based on Guava RangeMap.
 
+The library is available as an npm package. To install the package run:
+
+```
+npm install range-ts --save
+# or with yarn
+yarn add range-ts
+```
+
 ## Concepts
 
 ### NumberRange
