@@ -2,7 +2,10 @@
   "name": "range-ts",
   "version": "0.1.0",
   "description": "RangeMap implementation based on Guava",
-  "main": "index.js",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm5/index.js",
+  "es2015": "./dist/esm/index.js",
+  "types": "./dist/types/index.d.ts",
   "repository": {
     "type": "git",
     "url": "https://github.com/Rescla/range-ts.git"
@@ -14,8 +17,27 @@
     "Range"
   ],
   "scripts": {
+    "build:clean": "shx rm -rf ./dist",
+    "build": "tsc -b ./src/tsconfig.cjs.json ./src/tsconfig.esm.json ./src/tsconfig.esm5.json ./src/tsconfig.types.json",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Marc Fokkert <marcfokkert@xz1.nl>",
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "dependencies": {
+    "tslib": "^2.0.3"
+  },
+  "devDependencies": {
+    "@types/lodash-es": "^4.17.4",
+    "jasmine": "^3.6.3",
+    "shx": "^0.3.3",
+    "typescript": "^4.1.3",
+    "husky": "4.3.5",
+    "prettier": "2.2.1",
+    "pretty-quick": "3.1.0"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "npx pretty-quick --staged"
+    }
+  }
 }
