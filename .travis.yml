@@ -10,4 +10,4 @@ install:
 
 script:
   # Run static analyzers
-  - npm build
+  - npm run build

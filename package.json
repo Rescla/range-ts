@@ -18,7 +18,8 @@
   ],
   "scripts": {
     "build:clean": "shx rm -rf ./dist",
-    "build": "tsc -b ./src/tsconfig.cjs.json ./src/tsconfig.esm.json ./src/tsconfig.esm5.json ./src/tsconfig.types.json",
+    "compile": "tsc -b ./src/tsconfig.cjs.json ./src/tsconfig.esm.json ./src/tsconfig.esm5.json ./src/tsconfig.types.json",
+    "build": "npm-run-all build:clean compile",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Marc Fokkert <marcfokkert@xz1.nl>",
@@ -28,12 +29,13 @@
   },
   "devDependencies": {
     "@types/lodash-es": "^4.17.4",
-    "jasmine": "^3.6.3",
-    "shx": "^0.3.3",
-    "typescript": "^4.1.3",
     "husky": "4.3.5",
+    "jasmine": "^3.6.3",
+    "npm-run-all": "^4.1.5",
     "prettier": "2.2.1",
-    "pretty-quick": "3.1.0"
+    "pretty-quick": "3.1.0",
+    "shx": "^0.3.3",
+    "typescript": "^4.1.3"
   },
   "husky": {
     "hooks": {
