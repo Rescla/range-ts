@@ -144,10 +144,13 @@ export class RangeMap<T> {
       return;
     }
 
-    const toDelete = {};
+    const toDelete = {
+      toDeleteId: Math.random()
+    };
 
     this.put(range, toDelete as any);
 
+    // @ts-ignore
     this.rangeValues = this.rangeValues.filter(rangeValue => rangeValue.value !== toDelete);
   }
 
