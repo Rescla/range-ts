@@ -50,7 +50,7 @@ module.exports = function (config) {
       module: {
         rules: [
           {
-            test: /\.js$/,
+            test: /\.(js|ts)$/,
             exclude: [
               /test\.js$/,
               require("path").resolve(__dirname, "../node_modules"),
@@ -58,8 +58,11 @@ module.exports = function (config) {
             ],
             enforce: "post",
             use: {
-              loader: "istanbul-instrumenter-loader",
-              options: { esModules: true },
+              loader: 'babel-loader',
+              options: {
+                // presets: ['@babel/preset-env'],
+                plugins: ['babel-plugin-istanbul']
+              }
             },
           },
         ],
