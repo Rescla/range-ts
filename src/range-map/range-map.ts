@@ -135,6 +135,25 @@ export class RangeMap<T> {
     );
   }
 
+  /**
+   * Removes all associations from this range map in the specified range (optional operation).
+   * If !range.contains(k), get(k) will return the same result before and after a call to remove(range). If range.contains(k), then after a call to remove(range), get(k) will return null.
+   */
+  remove(range: NumberRange): void {
+    if(range.isEmpty()) {
+      return;
+    }
+
+    const toDelete = {
+      toDeleteId: Math.random()
+    };
+
+    this.put(range, toDelete as any);
+
+    // @ts-ignore
+    this.rangeValues = this.rangeValues.filter(rangeValue => rangeValue.value !== toDelete);
+  }
+
   private combinedPut(
     range: NumberRange,
     value: T,

@@ -263,6 +263,86 @@ describe("RangeMap", () => {
       expect(result3[0].toString()).toBe("[3..11)");
     });
   });
+
+
+  describe("remove", () => {
+    it('should remove an identical range', () => {
+      // Insert item with range, delete with said range, rangeMap should be empty
+      const rangeMap = new RangeMap();
+      const range = NumberRange.closedOpen(2, 10);
+
+      rangeMap.putCoalescing(range, 4);
+      rangeMap.remove(range);
+
+      expect(rangeMap.asMapOfRanges().size).toBe(0);
+    })
+
+    it('should remove encosed range', () => {
+      // Insert item with range, delete with larger range, rangemap should be empty
+      const rangeMap = new RangeMap();
+      const itemRange = NumberRange.closedOpen(3, 9);
+      const removeRange = NumberRange.closedOpen(2, 10);
+
+      rangeMap.putCoalescing(itemRange, 4);
+      rangeMap.remove(removeRange);
+
+      expect(rangeMap.asMapOfRanges().size).toBe(0);
+    })
+
+    it('should truncate range when partial overlapped', () => {
+      const rangeMap = new RangeMap();
+      const itemRange = NumberRange.closedOpen(1, 5);
+      const removeRange = NumberRange.closedOpen(3, 10);
+
+      rangeMap.putCoalescing(itemRange, 4);
+      rangeMap.remove(removeRange);
+
+      const result = rangeMap.asMapOfRanges()
+      expect(result.size).toBe(1);
+      expect([...result.entries()][0]).toEqual([NumberRange.closedOpen(1, 3), 4])
+    });
+
+    it('should truncate range when contained', () => {
+      const rangeMap = new RangeMap();
+      const itemRange = NumberRange.closedOpen(1, 10);
+      const removeRange = NumberRange.closedOpen(3, 5);
+
+      rangeMap.putCoalescing(itemRange, 4);
+      rangeMap.remove(removeRange);
+
+      const result = rangeMap.asMapOfRanges()
+      expect(result.size).toBe(2);
+      expect([...result.entries()][0]).toEqual([NumberRange.closedOpen(1, 3), 4])
+      expect([...result.entries()][1]).toEqual([NumberRange.closedOpen(5, 10), 4])
+    });
+
+    it('should not touch connected but not overlapping ranges' , () => {
+      const rangeMap = new RangeMap();
+      const itemRange = NumberRange.closedOpen(1, 5);
+      const removeRange = NumberRange.closedOpen(5, 10);
+
+      rangeMap.putCoalescing(itemRange, 4);
+      rangeMap.remove(removeRange);
+
+      const result = rangeMap.asMapOfRanges()
+      expect(result.size).toBe(1);
+      expect([...result.entries()][0]).toEqual([NumberRange.closedOpen(1, 5), 4])
+    })
+
+    it('should not touch non-overlapping ranges', () => {
+      // Insert item with range, delete with non-connecting range
+      const rangeMap = new RangeMap();
+      const itemRange = NumberRange.closedOpen(1, 3);
+      const removeRange = NumberRange.closedOpen(5, 10);
+
+      rangeMap.putCoalescing(itemRange, 4);
+      rangeMap.remove(removeRange);
+
+      const result = rangeMap.asMapOfRanges()
+      expect(result.size).toBe(1);
+      expect([...result.entries()][0]).toEqual([NumberRange.closedOpen(1, 3), 4])
+    })
+  })
 });
 
 describe("README example", () => {
