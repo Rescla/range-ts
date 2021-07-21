@@ -178,6 +178,11 @@ export class RangeMap<T> {
         return [];
       }
 
+      if(currentRangeValue.range.intersection(newRange)?.isEmpty()) {
+        // No overlap between ranges, preserve current range value
+        return [currentRangeValue];
+      }
+
       const rangeBefore = currentRangeValue.range.intersection(
         NumberRange.upTo(
           newRange.lowerEndpoint,
