@@ -33,6 +33,9 @@ module.exports = function (config) {
       },
     },
     reporters: ["progress", "kjhtml"],
+    optimization: {
+      minimize: false
+    },
     port: 9876,
     colors: true,
     logLevel: config.LOG_INFO,
@@ -45,26 +48,26 @@ module.exports = function (config) {
       "test.js": ["webpack", "sourcemap"],
     },
     webpack: {
-      mode: "production",
+      mode: "development",
       devtool: "inline-source-map",
       module: {
         rules: [
-          {
-            test: /\.(js|ts)$/,
-            exclude: [
-              /test\.js$/,
-              require("path").resolve(__dirname, "../node_modules"),
-              /\.spec\.js$/,
-            ],
-            enforce: "post",
-            use: {
-              loader: 'babel-loader',
-              options: {
-                // presets: ['@babel/preset-env'],
-                plugins: ['babel-plugin-istanbul']
-              }
-            },
-          },
+          // {
+          //   test: /\.(js|ts)$/,
+          //   exclude: [
+          //     /test\.js$/,
+          //     require("path").resolve(__dirname, "../node_modules"),
+          //     /\.spec\.js$/,
+          //   ],
+          //   enforce: "post",
+          //   use: {
+          //     loader: 'babel-loader',
+          //     options: {
+          //       // presets: ['@babel/preset-env'],
+          //       // plugins: ['babel-plugin-istanbul']
+          //     }
+          //   },
+          // },
         ],
       },
     },
