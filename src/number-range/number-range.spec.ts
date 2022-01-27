@@ -372,6 +372,52 @@ describe('Range', () => {
       expect(largeRange.encloses(smallRange)).toBeTrue();
       expect(smallRange.encloses(largeRange)).toBeFalse();
     });
+
+    describe('docs specifications', () => {
+      // See  https://guava.dev/releases/19.0/api/docs/com/google/common/collect/Range.html#encloses(com.google.common.collect.Range)
+
+      it('[3...6] encloses [4..5]', () => {
+        const r1 = NumberRange.closed(3, 6)
+        const r2 = NumberRange.closed(4, 5);
+
+        expect(r1.encloses(r2)).toBeTrue()
+      })
+
+      it('(3..6) encloses (3..6)', () => {
+        const r1 = NumberRange.open(3, 6)
+        const r2 = NumberRange.open(3, 6);
+
+        expect(r1.encloses(r2)).toBeTrue()
+      })
+
+      it('[3..6] encloses [4..4)', () => {
+        const r1 = NumberRange.closed(3, 6)
+        const r2 = NumberRange.closedOpen(4, 4);
+
+        expect(r1.encloses(r2)).toBeTrue()
+      })
+
+      it('(3..6] does not enclose [3..6] ', () => {
+        const r1 = NumberRange.openClosed(3, 6);
+        const r2 = NumberRange.closed(3, 6);
+
+        expect(r1.encloses(r2)).toBeFalse()
+      })
+
+      it('[4..5] does not enclose (3..6)', () => {
+        const r1 = NumberRange.closed(4, 5)
+        const r2 = NumberRange.open(3, 6);
+
+        expect(r1.encloses(r2)).toBeFalse()
+      })
+
+      it('[3..6] does not enclose (1..1]', () => {
+        const r1 = NumberRange.closed(3, 6)
+        const r2 = NumberRange.openClosed(1, 1);
+
+        expect(r1.encloses(r2)).toBeFalse()
+      })
+    })
   });
 });
 

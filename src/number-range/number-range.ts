@@ -37,6 +37,13 @@ export class NumberRange {
   }
 
   /**
+   * Returns a range that contains all values strictly greater than lower and less than or equal to upper.
+   */
+  static openClosed(lower: Comparable, upper: Comparable): NumberRange {
+    return new NumberRange(lower, BoundType.OPEN, upper, BoundType.CLOSED);
+  }
+
+  /**
    * Returns a range that contains every value.
    */
   static all(): NumberRange {
@@ -116,12 +123,12 @@ export class NumberRange {
    */
   encloses(other: NumberRange): boolean {
     const lowerEndpointEnclosed =
-      this.lowerBoundType === BoundType.OPEN
+      other.lowerBoundType === BoundType.OPEN
         ? this.contains(other.lowerEndpoint) ||
           this.lowerEndpoint === other.lowerEndpoint
         : this.contains(other.lowerEndpoint);
     const upperEndpointEnclosed =
-      this.upperBoundType === BoundType.OPEN
+      other.upperBoundType === BoundType.OPEN
         ? this.contains(other.upperEndpoint) ||
           this.upperEndpoint === other.upperEndpoint
         : this.contains(other.upperEndpoint);
