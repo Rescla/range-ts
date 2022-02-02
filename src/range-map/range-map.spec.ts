@@ -362,6 +362,18 @@ describe("RangeMap", () => {
         expect(resultEntries.some(([range, value]) => range.upperEndpoint === Number.POSITIVE_INFINITY)).toBeTrue();
       }
     })
+
+    it('should return the correct span if the same range is added multiple times with put', () => {
+      const rangeMap = new RangeMap(isEqual);
+
+      rangeMap.put(NumberRange.closedOpen(1590962400000, 1622498400000), 1);
+      // Test passed before fix if only 1 is added, but with 2 or 3 it failed
+      rangeMap.put(NumberRange.closedOpen(1590962400000, 1622498400000), 2);
+      rangeMap.put(NumberRange.closedOpen(1590962400000, 1622498400000), 3);
+      rangeMap.put(NumberRange.closedOpen(1616281200000, 1648076400000), 4);
+
+      expect(rangeMap.span()).toEqual(NumberRange.closedOpen(1590962400000, 1648076400000))
+    })
   })
 });
 
