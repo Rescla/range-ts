@@ -205,6 +205,7 @@ export class RangeMap<T> {
       // Create new range values for any ranges that are not overlapped by the new range value
       return ([rangeBefore, rangeAfter] as NumberRange[])
         .filter((a) => !!a)
+        .filter(a => !a.isEmpty())
         .map((currentRange: NumberRange) => ({
           range: currentRange,
           value: currentRangeValue.value,
