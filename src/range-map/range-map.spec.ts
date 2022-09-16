@@ -219,6 +219,20 @@ describe("RangeMap", () => {
         expect(result[1][0].toString()).toBe("[6..24)");
         expect(result[1][1]).toBe("a");
       });
+
+      it('should replace existing values', () => {
+        const rangeMap = new RangeMap<string>();
+
+        rangeMap.putCoalescing(NumberRange.closedOpen(0, 24), "a");
+        rangeMap.putCoalescing(NumberRange.closedOpen(0, 24), "b");
+
+        const result = Array.from(rangeMap.asMapOfRanges().entries());
+
+        expect(result.length).toBe(1);
+
+        expect(result[0][0].toString()).toBe("[0..24)");
+        expect(result[0][1]).toBe("b");
+      })
     });
   });
 
