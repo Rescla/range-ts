@@ -34,11 +34,11 @@ Ranges can, as an example, also be used to define a period of time with Dates, w
 To define a full day, ClosedOpen can be used.
 
 ```typescript
-// Example with DateFns
+// Example with DateFns (CET)
 const now = new Date(); // Sun Jan 03 2021 13:47:28    1609678048377
 const dayStart = startOfDay(now); // Sun Jan 03 2021 00:00:00    1609628400000
 const nextDayStart = addDays(dayStart, 1); // Mon Jan 04 2021 00:00:00    1609714800000
-NumberRange.closedOpen(dayStart, nextDayStart); // [1609628400000..1609714800000)
+NumberRange.closedOpen(dayStart, nextDayStart); // [2021-01-02T23:00:00.000Z..2021-01-03T23:00:00.000Z)
 ```
 
 Depending on your domain decisions you might serialize it like this:
