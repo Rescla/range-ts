@@ -133,9 +133,9 @@ export class NumberRange {
   encloses(other: NumberRange): boolean {
     const lowerEndpointEnclosed =
       other.lowerBoundType === BoundType.OPEN
-        ? this.contains(other.lowerEndpointValue) ||
+        ? this.contains(other.lowerEndpoint) ||
           this.lowerEndpointValue === other.lowerEndpointValue
-        : this.contains(other.lowerEndpointValue);
+        : this.contains(other.lowerEndpoint);
     const upperEndpointEnclosed =
       other.upperBoundType === BoundType.OPEN
         ? this.contains(other.upperEndpoint) ||
