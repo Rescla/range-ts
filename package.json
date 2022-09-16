@@ -1,6 +1,6 @@
 {
   "name": "range-ts",
-  "version": "0.2.0",
+  "version": "0.1.7",
   "description": "RangeMap implementation based on Guava",
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm5/index.js",
