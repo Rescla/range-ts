@@ -20,7 +20,7 @@ export class NumberRange {
   }
 
   get upperEndpointValue(): number {
-    return this.upperEndpoint.valueOf()
+    return this.upperEndpoint?.valueOf()
   }
 
   /**
