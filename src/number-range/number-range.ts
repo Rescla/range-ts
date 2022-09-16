@@ -15,6 +15,14 @@ export class NumberRange {
     public upperBoundType: BoundType
   ) {}
 
+  get lowerEndpointValue(): number {
+    return this.lowerEndpoint?.valueOf();
+  }
+
+  get upperEndpointValue(): number {
+    return this.upperEndpoint?.valueOf()
+  }
+
   /**
    * Returns a range that contains all values greater than or equal to lower and strictly less than upper.
    */
@@ -106,15 +114,16 @@ export class NumberRange {
   /**
    * Returns true if value is within the bounds of this range.
    */
-  contains(value: Comparable): boolean {
+  contains(comparable: Comparable): boolean {
+    const value = comparable?.valueOf();
     const aboveLowerEndpoint =
       this.lowerBoundType === BoundType.OPEN
-        ? this.lowerEndpoint < value
-        : this.lowerEndpoint <= value;
+        ? this.lowerEndpointValue < value
+        : this.lowerEndpointValue <= value;
     const belowUpperEndpoint =
       this.upperBoundType === BoundType.OPEN
-        ? this.upperEndpoint > value
-        : this.upperEndpoint >= value;
+        ? this.upperEndpointValue > value
+        : this.upperEndpointValue >= value;
     return aboveLowerEndpoint && belowUpperEndpoint;
   }
 
@@ -125,12 +134,12 @@ export class NumberRange {
     const lowerEndpointEnclosed =
       other.lowerBoundType === BoundType.OPEN
         ? this.contains(other.lowerEndpoint) ||
-          this.lowerEndpoint === other.lowerEndpoint
+          this.lowerEndpointValue === other.lowerEndpointValue
         : this.contains(other.lowerEndpoint);
     const upperEndpointEnclosed =
       other.upperBoundType === BoundType.OPEN
         ? this.contains(other.upperEndpoint) ||
-          this.upperEndpoint === other.upperEndpoint
+          this.upperEndpointValue === other.upperEndpointValue
         : this.contains(other.upperEndpoint);
     return lowerEndpointEnclosed && upperEndpointEnclosed;
   }
@@ -152,14 +161,14 @@ export class NumberRange {
     }
 
     // Determine inner ranges
-    const lowerRange = this.lowerEndpoint <= other.lowerEndpoint ? other : this;
-    const upperRange = this.upperEndpoint >= other.upperEndpoint ? other : this;
+    const lowerRange = this.lowerEndpointValue <= other.lowerEndpointValue ? other : this;
+    const upperRange = this.upperEndpointValue >= other.upperEndpointValue ? other : this;
 
     // Determine bound types
     let lowerBoundType;
     let upperBoundType;
 
-    if (this.lowerEndpoint === other.lowerEndpoint) {
+    if (this.lowerEndpointValue === other.lowerEndpointValue) {
       lowerBoundType =
         this.lowerBoundType === BoundType.OPEN ||
         other.lowerBoundType === BoundType.OPEN
@@ -169,7 +178,7 @@ export class NumberRange {
       lowerBoundType = lowerRange.lowerBoundType;
     }
 
-    if (this.upperEndpoint === other.upperEndpoint) {
+    if (this.upperEndpointValue === other.upperEndpointValue) {
       upperBoundType =
         this.upperBoundType === BoundType.OPEN ||
         other.upperBoundType === BoundType.OPEN
@@ -204,7 +213,7 @@ export class NumberRange {
    */
   isEmpty(): boolean {
     return (
-      this.lowerEndpoint === this.upperEndpoint &&
+      this.lowerEndpointValue === this.upperEndpointValue &&
       (this.lowerBoundType === BoundType.OPEN ||
         this.upperBoundType === BoundType.OPEN)
     );
@@ -215,14 +224,14 @@ export class NumberRange {
    */
   span(other: NumberRange): NumberRange {
     // Determine outer ranges
-    const lowerRange = this.lowerEndpoint <= other.lowerEndpoint ? this : other;
-    const upperRange = this.upperEndpoint >= other.upperEndpoint ? this : other;
+    const lowerRange = this.lowerEndpointValue <= other.lowerEndpointValue ? this : other;
+    const upperRange = this.upperEndpointValue >= other.upperEndpointValue ? this : other;
 
     // Determine bound types
     let lowerBoundType;
     let upperBoundType;
 
-    if (this.lowerEndpoint === other.lowerEndpoint) {
+    if (this.lowerEndpointValue === other.lowerEndpointValue) {
       lowerBoundType =
         this.lowerBoundType === BoundType.CLOSED ||
         other.lowerBoundType === BoundType.CLOSED
@@ -232,7 +241,7 @@ export class NumberRange {
       lowerBoundType = lowerRange.lowerBoundType;
     }
 
-    if (this.upperEndpoint === other.upperEndpoint) {
+    if (this.upperEndpointValue === other.upperEndpointValue) {
       upperBoundType =
         this.upperBoundType === BoundType.CLOSED ||
         other.upperBoundType === BoundType.CLOSED
@@ -279,7 +288,13 @@ export class NumberRange {
         case Number.NEGATIVE_INFINITY:
           return "-∞";
         default:
-          return value;
+          // @ts-ignore
+          if(value['toISOString']) {
+            // @ts-ignore
+            return value.toISOString();
+          }
+
+          return value.valueOf();
       }
     };
 

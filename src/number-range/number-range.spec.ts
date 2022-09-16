@@ -18,20 +18,28 @@ describe('Range', () => {
     it('should print all', () => {
       expect(NumberRange.all().toString()).toBe('(-∞..+∞)');
     });
+
+    it('should print Dates using toISOString()', () => {
+      expect(NumberRange.open(new Date(4), new Date(9)).toString()).toBe('(1970-01-01T00:00:00.004Z..1970-01-01T00:00:00.009Z)');
+    })
   });
 
   describe('contains', () => {
     describe('closed open', () => {
       it('should match on a closed endpoint', () => {
         expect(NumberRange.closedOpen(2, 4).contains(2)).toBeTrue();
+        expect(NumberRange.closedOpen(new Date(2), new Date(4)).contains(2)).toBeTrue();
+        expect(NumberRange.closedOpen(new Date(2), new Date(4)).contains(new Date(2))).toBeTrue();
       });
 
       it('should not match on an open endpoint', () => {
         expect(NumberRange.closedOpen(2, 4).contains(4)).toBeFalse();
+        expect(NumberRange.closedOpen(new Date(2), new Date(4)).contains(new Date(4))).toBeFalse();
       });
 
       it('should match on a number inside', () => {
         expect(NumberRange.closedOpen(2, 4).contains(3)).toBeTrue();
+        expect(NumberRange.closedOpen(new Date(2), new Date(4)).contains(new Date(3))).toBeTrue();
       });
 
       it('should not match on a number before', () => {
@@ -147,6 +155,21 @@ describe('Range', () => {
         NumberRange.atLeast(3)
       );
       expect(result?.toString()).toBe('[3..4)');
+    });
+
+    it('should intersect with Date closedOpen and Date atLeast', () => {
+      const result = NumberRange.closedOpen(new Date(2), new Date(4)).intersection(
+        NumberRange.atLeast(new Date(3))
+      );
+      expect(result?.toString()).toBe('[1970-01-01T00:00:00.003Z..1970-01-01T00:00:00.004Z)');
+    });
+
+    it('should intersect with Date closedOpen and number atLeast', () => {
+      const result = NumberRange.closedOpen(new Date(2), new Date(4)).intersection(
+        NumberRange.atLeast(3)
+      );
+      // Note that the resulting Range is mixed, no conversions are performed.
+      expect(result?.toString()).toBe('[3..1970-01-01T00:00:00.004Z)');
     });
 
     it('should intersect with closedOpen and atMost', () => {
@@ -419,6 +442,12 @@ describe('Range', () => {
       })
     })
   });
+
+  describe('isEmpty', () => {
+    it('should support Dates', () => {
+      expect(NumberRange.closedOpen(new Date(0), new Date(0)).isEmpty()).toBeTrue();
+    })
+  })
 });
 
 
