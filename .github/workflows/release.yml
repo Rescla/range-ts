@@ -11,7 +11,7 @@ jobs:
         run: npm ci
       - name: Run build
         run: npm run build
-      - uses: mikeal/merge-release@master
-        env:
+      - uses: Github-Actions-Community/merge-release@main
+        with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
