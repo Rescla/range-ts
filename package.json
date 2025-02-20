@@ -18,7 +18,7 @@
   ],
   "scripts": {
     "build:clean": "shx rm -rf ./dist",
-    "compile": "tsc -b ./src/tsconfig.cjs.json ./src/tsconfig.esm.json ./src/tsconfig.esm5.json ./src/tsconfig.types.json ./src/tsconfig.karma.json",
+    "compile": "tsc -b ./src/tsconfig.cjs.json ./src/tsconfig.esm.json ./src/tsconfig.esm5.json ./src/tsconfig.amd.json ./src/tsconfig.types.json ./src/tsconfig.karma.json",
     "build": "npm-run-all build:clean compile test",
     "test": "karma start src/karma.conf.js --single-run --no-auto-watch --browsers ChromeHeadless --reporters kjhtml,junit,coverage-istanbul",
     "test-dev": "karma start src/karma.conf.js"
