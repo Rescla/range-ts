@@ -1,46 +1,115 @@
 name: Release
+
+# One manual dispatch does the whole release: verify, build, test, publish to npm,
+# tag, and open the GitHub release. Nothing here runs on its own, so a push can
+# never publish a package.
+#
+# Full process and the reasoning behind each step: RELEASE.md
+
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Run everything except the actual publish and tag push'
+        type: boolean
+        default: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # push the tag, create the GitHub release
+      id-token: write # npm provenance attestation (OIDC)
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Tags and full history: needed to read the previous release and to push
+          # the new tag without a shallow-clone failure.
+          fetch-depth: 0
 
-      # Same toolchain pin as CI (see main.yml): an unpinned runner npm resolves
-      # optional peer deps differently and can call a valid lockfile "out of sync".
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
+      # The npm bundled with Node 22 is 10.9.9. Trusted publishing needs npm
+      # >= 11.5.1 (and Node >= 22.14.0), so without this upgrade the token-free
+      # path is unavailable and `--provenance` falls back to token-only.
+      # Pinning the npm we publish with also means the provenance attestation is
+      # made by a known CLI version rather than whatever the image drifted to.
+      - name: Pin npm used for publishing
+        run: npm install -g npm@11
+
+      - name: Show toolchain
+        run: node -v && npm -v && npm config get ignore-scripts && npm config get min-release-age
+
       - name: Npm ci
         run: npm ci
 
-      - name: Run build
+      # Fail before publishing rather than after: if 1.0.0 is already on the
+      # registry, npm publish errors mid-flow and leaves a tag pointing at a
+      # release that never shipped.
+      - name: Refuse to re-publish an existing version
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "package version: $VERSION"
+          if npm view "range-ts@$VERSION" version >/dev/null 2>&1; then
+            echo "::error::range-ts@$VERSION already exists on npm. Bump the version or delete the release deliberately; do not re-publish."
+            exit 1
+          fi
+          echo "range-ts@$VERSION is not on the registry yet — good to publish."
+
+      # The build runs the full test suite (build:clean -> compile -> test), so a
+      # red suite stops the release here instead of after the publish.
+      - name: Build and test
         run: npm run build
 
-      # This step used to be `Github-Actions-Community/merge-release@main`. That
-      # repository does not exist: the GitHub API returns 404 for every casing
-      # variant and `git ls-remote` falls through to a credentials prompt (which
-      # is how GitHub answers for absent/private repos), while the same probe on
-      # actions/checkout returns a HEAD sha. So the step could never have run, and
-      # a floating `@main` on an unregistered org name is exactly the shape a
-      # later squat would take.
-      #
-      # Replaced with the documented plain publish path: setup-node points npm at
-      # the registry and NODE_AUTH_TOKEN authenticates it. No third-party action,
-      # so nothing unpinned to audit.
       - name: Publish to npm
-        run: npm publish --access public
+        if: ${{ !inputs.dry_run }}
+        run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
 
-      # Optional hardening, not enabled because it needs account-side setup:
-      # `npm publish --provenance` requires npm >= 11.14 and a configured trusted
-      # publisher for this package on npmjs.com. Turn it on once that exists and
-      # the token above can be dropped entirely.
+      - name: Verify the published artifact
+        if: ${{ !inputs.dry_run }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          npm view "range-ts@$VERSION" version dist.tarball dist.integrity
+          echo "--- files in the published tarball ---"
+          npm view "range-ts@$VERSION" dist.fileCount
+
+      - name: Tag the release
+        if: ${{ !inputs.dry_run }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "v$VERSION"
+          git push origin "v$VERSION"
+
+      - name: Create GitHub release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          # Pull this version's changelog section as the release notes, so the
+          # GitHub release and CHANGELOG.md cannot disagree.
+          #
+          # Literal matching via index(), not a regex: `$0 ~ "^## [1.0.0]"` looks
+          # right but [1.0.0] is a character class in a regex, so it matches
+          # "## " plus one of 1/./0 and never matches the actual heading. That
+          # silently produced empty release notes until tested here.
+          NOTES=$(awk -v v="## [$VERSION]" '
+            index($0, v) == 1 { grab=1; next }
+            grab && substr($0, 1, 4) == "## [" { exit }
+            grab { print }
+          ' CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            echo "::warning::No CHANGELOG.md section found for $VERSION; releasing without notes."
+            NOTES="range-ts $VERSION"
+          fi
+          gh release create "v$VERSION" --title "v$VERSION" --notes "$NOTES"
