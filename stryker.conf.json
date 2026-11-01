@@ -24,7 +24,7 @@
     "dist/spec-node/range-map/range-map.js",
     "!dist/spec-node/**/*.spec.js"
   ],
-  "reporters": ["clear-text", "progress", "html"],
+  "reporters": ["clear-text", "progress", "html", "json"],
   "timeoutMS": 60000,
   "concurrency": 4,
   "thresholds": {

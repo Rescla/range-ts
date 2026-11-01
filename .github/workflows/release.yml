@@ -7,6 +7,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      # Same toolchain pin as CI (see main.yml): an unpinned runner npm resolves
+      # optional peer deps differently and can call a valid lockfile "out of sync".
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Npm ci
         run: npm ci
       - name: Run build

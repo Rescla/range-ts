@@ -25,8 +25,19 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
 
+      # Pin the toolchain. Without this the job uses whatever Node/npm the runner
+      # image happens to ship, and npm versions resolve optional peer deps
+      # differently: npm 10 wanted a nested webpack@5.112.2 to satisfy
+      # schema-utils' peerOptional, npm 11 did not, so a lockfile written by one
+      # was "out of sync" for the other. Pinning Node (and a lockfile that now
+      # installs cleanly under both npm 10 and 11) makes this deterministic.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Npm ci
-        run: npm ci --no-optional
+        run: npm ci --omit=optional
 
       - name: Codeclimate before build
         env:
