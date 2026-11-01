@@ -35,6 +35,11 @@ and does not protect against.
 - **`min-release-age=7`** (`.npmrc`) — refuses to install package versions
   published less than 7 days ago, which is the window in which a typosquat or a
   hijacked-package version typically circulates before detection.
+- **Dependabot with a matching 7-day cooldown** (`.github/dependabot.yml`) —
+  automated update PRs are held to the same quarantine as the install gate, so
+  the two controls do not fight each other. Covers both npm dependencies and the
+  GitHub Actions in `.github/workflows`, which run with repo credentials and are
+  therefore the higher-risk class.
 - **No `--omit=optional` anywhere.** Not a security control but a correctness
   requirement: TypeScript 7's compiler is a platform-specific
   `optionalDependency`, so omitting optionals deletes the compiler.

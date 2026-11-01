@@ -1,0 +1,91 @@
+# Dependabot configuration.
+#
+# HISTORY: dependabot has 6 commits in this repo's history (socket.io, loader-utils,
+# minimatch, socket.io-parser bumps, 2021-2022), so it WAS enabled -- via the old
+# pre-file UI. That configuration was lost and automated dependency updates have
+# been off since. This file restores them.
+#
+# THE KEY CONSTRAINT: this repo sets `min-release-age=7` in .npmrc. npm refuses to
+# install any version published less than 7 days ago, and it fails with
+#   ETARGET  notarget No matching version found for <pkg>@<ver> with a date before <date>
+# which reads like "this version does not exist" rather than "this version is too
+# new". A dependabot PR for a 3-day-old version therefore fails CI with a
+# misleading error that looks like a broken dependency rather than a deliberate
+# quarantine. `cooldown.default-days: 7` below keeps the two settings aligned so
+# dependabot does not propose something npm will refuse.
+#
+# If you change min-release-age, change default-days to match.
+
+version: 2
+
+updates:
+  # ---- Application dependencies -------------------------------------------
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "06:00"
+      timezone: "Europe/Amsterdam"
+
+    # Mirrors min-release-age in .npmrc. See the note above -- these two must
+    # agree or dependabot opens PRs that cannot pass CI.
+    cooldown:
+      default-days: 7
+      # Majors get a longer soak: they are where the breaking changes and the
+      # supply-chain risk both concentrate, and this library has no rush.
+      semver-major-days: 30
+      # Patch floods are the noisiest case and also the most likely to be
+      # security-relevant, so patches are allowed as soon as the quarantine lifts.
+      semver-patch-days: 7
+
+    # Small library, small queue. Without a limit a single upstream release train
+    # can bury the repo in PRs nobody reviews, which is worse than no bot.
+    open-pull-requests-limit: 5
+
+    labels:
+      - "dependencies"
+
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+    # One grouped PR for minor+patch dev-dependency bumps instead of ~20 separate
+    # ones. Majors stay individual because each needs its own decision, and a
+    # grouped PR that bundles a major would hide it.
+    groups:
+      dev-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+        dependency-type: "development"
+
+    # Exact-pinned packages (karma-webpack 5.0.1, @types/lodash-es 4.17.12,
+    # karma-sourcemap-loader 0.4.0) are pinned deliberately by the previous
+    # maintainer. Dependabot still proposes bumps for them; that is fine, but do
+    # not silently widen the pin while taking the bump -- the pin is a statement
+    # that the range was not verified.
+
+  # ---- GitHub Actions ------------------------------------------------------
+  # The action versions in .github/workflows were being bumped by hand (checkout
+  # v2 -> v7, setup-node -> v7, CodeQL v1 -> v4). Those are dependencies too,
+  # and they run with repo credentials, which makes them the higher-risk class.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "06:00"
+      timezone: "Europe/Amsterdam"
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci"
+      include: "scope"

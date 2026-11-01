@@ -35,6 +35,13 @@ This repo ships an `.npmrc` with:
 Both are deliberate supply-chain controls. If a dependency legitimately needs an
 install script, do not remove the setting globally; raise it as a question first.
 
+**If you change `min-release-age`, change `cooldown.default-days` in
+`.github/dependabot.yml` to match.** npm enforces the gate with
+`ETARGET: No matching version found for <pkg>@<ver> with a date before <date>`,
+which reads like "this version does not exist" rather than "this version is too
+new". If the two drift apart, dependabot opens PRs that fail CI pointing at an
+apparently broken dependency instead of at the quarantine.
+
 ### Do not use `BigInt` literals in source
 
 Write `BigInt(1)`, not `1n`. A literal is a syntax error against some of the
