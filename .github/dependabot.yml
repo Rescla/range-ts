@@ -81,7 +81,19 @@ updates:
       timezone: "Europe/Amsterdam"
     cooldown:
       default-days: 7
-      semver-major-days: 30
+      # NO semver-*-days here. Dependabot accepts semver-major-days /
+      # semver-minor-days / semver-patch-days for npm only; for the
+      # github-actions ecosystem it rejects the file outright:
+      #   The property '#/updates/1/cooldown/semver-major-days' is not
+      #   supported for the package ecosystem 'github-actions'.
+      # This passes json.schemastore.org/dependabot-2.0, because that schema is
+      # generic across ecosystems -- the restriction lives only in GitHub's own
+      # validator. Do not "fix" it by re-adding the key because the schema
+      # allows it. See the note in CONTRIBUTING.md.
+      #
+      # Consequence: action updates get the same 7-day soak as everything else
+      # rather than a longer one for majors. Acceptable -- Action major bumps
+      # (v7 -> v8) are rare and get reviewed on sight anyway.
     open-pull-requests-limit: 5
     labels:
       - "dependencies"

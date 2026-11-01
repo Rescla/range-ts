@@ -42,6 +42,24 @@ which reads like "this version does not exist" rather than "this version is too
 new". If the two drift apart, dependabot opens PRs that fail CI pointing at an
 apparently broken dependency instead of at the quarantine.
 
+### Dependabot config: the JSON Schema is not the validator
+
+`.github/dependabot.yml` validates cleanly against
+`json.schemastore.org/dependabot-2.0` and can *still* be rejected by GitHub,
+because the published schema is generic across ecosystems and the
+ecosystem-specific rules live only in GitHub's own validator. Concretely:
+
+- `cooldown.semver-major-days` / `-minor-` / `-patch-` are accepted for **npm
+  only**. On `github-actions` GitHub rejects the file with
+  `The property '#/updates/N/cooldown/semver-major-days' is not supported for the
+  package ecosystem 'github-actions'`.
+- While the config is invalid, Dependabot **stops running version updates for the
+  whole file** — the damage is not confined to the offending entry.
+
+So "the schema says it's fine" is not evidence. `npm run check:dependabot`
+(which runs as part of `npm test`) enforces the ecosystem rule and also checks
+that `cooldown.default-days` is not shorter than `min-release-age` in `.npmrc`.
+
 ### Do not use `BigInt` literals in source
 
 Write `BigInt(1)`, not `1n`. A literal is a syntax error against some of the
