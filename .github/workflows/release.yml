@@ -1,16 +1,40 @@
 name: Release
 
-# One manual dispatch does the whole release: verify, build, test, publish to npm,
-# tag, and open the GitHub release. Nothing here runs on its own, so a push can
-# never publish a package.
+# Staged publishing. CI stages the package; a human approves it with 2FA.
 #
-# Full process and the reasoning behind each step: RELEASE.md
+# Why not `npm publish`: npm is restricting tokens that bypass 2FA for direct
+# publishing (registry notice: "npm tokens that bypass 2FA are being restricted
+# for account changes and direct publishing", gh.io/npm-gat-bypass2fa-deprecation).
+# A CI job cannot answer a 2FA challenge, so a direct publish from CI is being
+# closed off. Staged publishing is the sanctioned shape: `npm stage publish`
+# needs no 2FA, and the human-with-a-TPM-or-authenticator step is the approval.
+#
+# Two modes, dispatched explicitly:
+#
+#   stage   -> build, test, submit to the staging area. Reports the stage id and
+#              the exact approve command. Does NOT tag and does NOT open a release,
+#              because the package is not installable yet.
+#   promote -> run AFTER a human has approved. Verifies the version is actually
+#              live on the registry, then tags and opens the GitHub release.
+#
+# The split exists so a git tag can never point at a version that was staged but
+# rejected. Approval is inherently human (2FA), so it cannot live in CI.
+#
+# Full process: RELEASE.md
 
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: 'stage = submit for review; promote = tag and release after human approval'
+        type: choice
+        required: true
+        default: 'stage'
+        options:
+          - stage
+          - promote
       dry_run:
-        description: 'Run everything except the actual publish and tag push'
+        description: 'In stage mode: run everything except the actual stage submission'
         type: boolean
         default: false
 
@@ -23,68 +47,110 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # Tags and full history: needed to read the previous release and to push
-          # the new tag without a shallow-clone failure.
           fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
-          # Latest LTS. Its bundled npm (11.20.0 as of Node 26.13.0) already
-          # satisfies what provenance and trusted publishing need, so there is no
-          # separate npm upgrade step here.
+          # Staged publishing requires npm >= 11.15.0 and Node >= 22.14.0.
+          # Node 26 (current LTS) bundles npm 11.20.0, which clears both.
           node-version: '26'
           registry-url: 'https://registry.npmjs.org'
 
-      # Record the exact toolchain that produced the artifact and the attestation.
-      # This is the determinism evidence: the run log says which node/npm published,
-      # rather than leaving it inferred from whatever the runner image drifted to.
       - name: Show toolchain
         run: |
           node -v
           npm -v
           echo "ignore-scripts = $(npm config get ignore-scripts)"
           echo "min-release-age = $(npm config get min-release-age)"
+          # Fail loudly and early if this npm cannot stage at all, rather than
+          # discovering it four steps into the release.
+          npm stage --help >/dev/null 2>&1 \
+            || { echo "::error::this npm has no 'stage' command (needs >= 11.15.0)"; exit 1; }
 
       - name: Npm ci
         run: npm ci
 
-      # Fail before publishing rather than after: if 1.0.0 is already on the
-      # registry, npm publish errors mid-flow and leaves a tag pointing at a
-      # release that never shipped.
-      - name: Refuse to re-publish an existing version
-        env:
-          DRY_RUN: ${{ inputs.dry_run }}
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "package version: $VERSION"
-          if npm view "range-ts@$VERSION" version >/dev/null 2>&1; then
-            echo "::error::range-ts@$VERSION already exists on npm. Bump the version or delete the release deliberately; do not re-publish."
-            exit 1
-          fi
-          echo "range-ts@$VERSION is not on the registry yet — good to publish."
-
-      # The build runs the full test suite (build:clean -> compile -> test), so a
-      # red suite stops the release here instead of after the publish.
       - name: Build and test
         run: npm run build
 
-      - name: Publish to npm
-        if: ${{ !inputs.dry_run }}
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
+      # --------------------------------------------------------------------
+      # STAGE
+      # --------------------------------------------------------------------
+      - name: Stage the package
+        if: ${{ inputs.mode == 'stage' && !inputs.dry_run }}
+        run: |
+          # NOTE: no package-spec argument. `npm stage publish range-ts` resolves
+          # the name against the REGISTRY, not the working directory, and fails
+          # with "You cannot publish over the previously published versions".
+          # Publishing the current directory means passing nothing (or `.`).
+          npm stage publish --access public --provenance
 
-      - name: Verify the published artifact
-        if: ${{ !inputs.dry_run }}
+      - name: Report the stage id and the approve command
+        if: ${{ inputs.mode == 'stage' && !inputs.dry_run }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          npm view "range-ts@$VERSION" version dist.tarball dist.integrity
-          echo "--- files in the published tarball ---"
-          npm view "range-ts@$VERSION" dist.fileCount
+          npm stage list "range-ts@$VERSION" --json > /tmp/staged.json || true
+          STAGE_ID=$(node -e '
+            const fs = require("fs");
+            let raw;
+            try { raw = JSON.parse(fs.readFileSync("/tmp/staged.json", "utf8")); }
+            catch (e) { console.log(""); process.exit(0); }
+            const rows = Array.isArray(raw) ? raw : (raw.staged || raw.data || []);
+            const hit = rows.find(r => (r.package || r.name) === "range-ts" && r.version === process.argv[1])
+                    || rows[0];
+            if (!hit) { console.log(""); process.exit(0); }
+            console.log(hit.stageId || hit.stage_id || hit.id || "");
+          ' "$VERSION" || true)
+
+          echo "staged package: range-ts@$VERSION"
+          if [ -n "$STAGE_ID" ]; then
+            echo "stage id: $STAGE_ID"
+            echo "::notice::Staged as $STAGE_ID"
+            {
+              echo "### Next step: approve with 2FA"
+              echo ""
+              echo "Approval cannot happen in CI — it requires a human 2FA challenge."
+              echo ""
+              echo "\`\`\`"
+              echo "npm stage view $STAGE_ID      # review"
+              echo "npm stage approve $STAGE_ID   # publishes live, prompts for 2FA"
+              echo "\`\`\`"
+              echo ""
+              echo "Then re-dispatch this workflow with mode=promote to tag and release."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            # Do not guess an id. Say the shape could not be read and point at the
+            # raw output rather than printing a plausible-looking nothing.
+            echo "::warning::Could not read the stage id from 'npm stage list' output."
+            echo "Raw output follows; find the id on the Staged Packages tab at npmjs.com."
+            cat /tmp/staged.json
+          fi
+
+      - name: Dry-run report
+        if: ${{ inputs.mode == 'stage' && inputs.dry_run }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          npm stage publish --access public --dry-run
+          echo "dry run: nothing staged for range-ts@$VERSION"
+
+      # --------------------------------------------------------------------
+      # PROMOTE  (only meaningful after a human ran `npm stage approve`)
+      # --------------------------------------------------------------------
+      - name: Verify the version is actually live
+        if: ${{ inputs.mode == 'promote' }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if ! npm view "range-ts@$VERSION" version >/dev/null 2>&1; then
+            echo "::error::range-ts@$VERSION is not on the public registry."
+            echo "Promote runs only AFTER a human has approved the staged package."
+            echo "Run 'npm stage list range-ts@$VERSION' and approve it, then retry."
+            exit 1
+          fi
+          echo "range-ts@$VERSION is live on the registry — safe to tag."
 
       - name: Tag the release
-        if: ${{ !inputs.dry_run }}
+        if: ${{ inputs.mode == 'promote' }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
           git config user.name "github-actions[bot]"
@@ -93,18 +159,14 @@ jobs:
           git push origin "v$VERSION"
 
       - name: Create GitHub release
-        if: ${{ !inputs.dry_run }}
+        if: ${{ inputs.mode == 'promote' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          # Pull this version's changelog section as the release notes, so the
-          # GitHub release and CHANGELOG.md cannot disagree.
-          #
           # Literal matching via index(), not a regex: `$0 ~ "^## [1.0.0]"` looks
-          # right but [1.0.0] is a character class in a regex, so it matches
-          # "## " plus one of 1/./0 and never matches the actual heading. That
-          # silently produced empty release notes until tested here.
+          # right but [1.0.0] is a character class, so it matched "## " plus one
+          # of 1/./0 and never matched the real heading. Returned 0 chars.
           NOTES=$(awk -v v="## [$VERSION]" '
             index($0, v) == 1 { grab=1; next }
             grab && substr($0, 1, 4) == "## [" { exit }

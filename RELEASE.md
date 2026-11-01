@@ -1,34 +1,42 @@
 # Release process
 
-A release is four separate artifacts that must agree: the **npm package**, the
-**git tag**, the **GitHub release**, and the **CHANGELOG**. Doing three of four is
-how you get a tag pointing at a version that never shipped, or a changelog that
-claims a release that isn't on the registry.
+A release is four artifacts that must agree: the **npm package**, the **git tag**,
+the **GitHub release**, and the **CHANGELOG**. Doing three of four is how you get
+a tag pointing at a version that never shipped.
 
-## Prerequisites (one-time, account-side)
+With staged publishing there is a fifth state in between: **staged but not
+approved**. The process is built so that state can never acquire a git tag.
 
-The publish step needs one of these configured on npmjs.com for this package:
+## Why staged, not `npm publish`
 
-1. **`NPM_AUTH_TOKEN`** — a granular access token scoped to publish `range-ts`,
-   stored as a GitHub Actions secret on the repo. This is what the workflow uses
-   today.
-2. **Trusted publishing (preferred once set up)** — OIDC from this repo, no
-   long-lived token. Requires npm ≥ 11.5.1 and Node ≥ 22.14.0. CI runs Node 26
-   (current LTS), whose bundled npm 11.20.0 already clears both, so no npm
-   upgrade step is needed. Once configured in the npm UI (repo `Rescla/range-ts`,
-   workflow `.github/workflows/release.yml`), `NPM_AUTH_TOKEN` can be deleted.
+npm is restricting tokens that bypass 2FA for direct publishing. The registry
+returns the notice: *"npm tokens that bypass 2FA are being restricted for account
+changes and direct publishing"* (`gh.io/npm-gat-bypass2fa-deprecation`). A CI
+job cannot answer a 2FA challenge, so `npm publish` from CI is being closed off —
+which is what broke the first real release attempt.
 
-Without either, the publish step fails with `ENEEDAUTH` and nothing else in the
-release happens. `npm whoami` returning `ENEEDAUTH` on a workstation is expected;
-publishing happens in CI.
+Staged publishing is the sanctioned shape:
 
-## Steps
+- `npm stage publish` — **no 2FA required**. CI can do this.
+- `npm stage approve <id>` — **2FA required**. A human must do this.
 
-### 1. Prepare (local, committed before the release is cut)
+That split is not an inconvenience to work around; it is the security property.
+The human is the point.
+
+Requires npm CLI ≥ 11.15.0 and Node ≥ 22.14.0. CI runs Node 26 (current LTS),
+which bundles npm 11.20.0.
+
+## Flow
+
+```
+CI: stage  ──►  human: approve (2FA)  ──►  CI: promote (tag + GitHub release)
+```
+
+### 1. Prepare (local, committed before anything is staged)
 
 ```bash
 # a. version
-npm version 1.0.0 --no-git-tag-version   # or edit package.json directly
+npm version 1.0.0 --no-git-tag-version
 
 # b. CHANGELOG: give the entry the release date
 #    "## [1.0.0] - Unreleased"  ->  "## [1.0.0] - 2026-11-01"
@@ -46,68 +54,91 @@ git push origin master
 ```
 
 Step (c) is not optional. `package-lock.json` stores the package's own version in
-`packages[""].version`; a lockfile pinned to the previous version is a claim
-about the code that the next `npm install` propagates silently. This was actually
-missed once: `package.json` said `1.0.0`, the lockfile said `0.1.8`, and CI still
-passed — `npm ci` does not check the root version field.
+`packages[""].version`; a lockfile pinned to the previous version is a claim about
+the code that the next `npm install` propagates silently. This was actually missed
+once: `package.json` said `1.0.0`, the lockfile said `0.1.8`, and CI still passed
+— `npm ci` does not check the root version field.
 
-### 2. Publish (CI, one manual dispatch)
+### 2. Stage (CI, `mode=stage`)
 
-Actions → **Release** → Run workflow → uncheck dry-run.
+Actions → **Release** → mode `stage`.
 
-The workflow does, in order:
+Builds, tests, then `npm stage publish --access public --provenance`. The job
+reports the **stage id** and the exact approve command in the run summary.
 
-| Step | Why it is where it is |
-|---|---|
-| Show toolchain | Logs the exact node/npm that produced the artifact and attestation, instead of leaving it inferred from the runner image |
-| `npm ci` + `npm run build` | build runs the full suite, so a red test stops before publish |
-| Refuse if version exists | publishing over an existing version fails mid-flow and strands the tag |
-| `npm publish --provenance --access public` | the actual publish |
-| Verify from the registry | reads back version, tarball URL, integrity, file count |
-| Tag `v<version>` and push | the git-side assertion |
-| `gh release create` with the changelog section | notes are extracted from CHANGELOG.md so the two cannot disagree |
+It deliberately does **not** tag and does **not** open a GitHub release: the
+package is not installable yet and could still be rejected.
 
-Run it with `dry_run: true` first the first time to exercise everything except the
-publish and the tag push.
-
-### 3. Verify (after the dispatch)
+Useful review commands once staged:
 
 ```bash
-npm view range-ts version          # -> the new version
-npm view range-ts dist.tarball     # -> tarball URL
-git tag -l 'v*' | tail -3         # -> tag present
+npm stage list "range-ts@1.0.0" --json   # find the stage id
+npm stage view <stage-id>               # metadata
+npm stage download <stage-id>           # pull the tarball and inspect it
 ```
 
-Plus: the GitHub release exists with notes, and `npm audit` on a fresh consumer
-install resolves cleanly.
+### 3. Approve (human, 2FA — cannot be automated)
+
+```bash
+npm stage approve <stage-id>            # prompts for 2FA, publishes live
+```
+
+Or the **Staged Packages** tab on npmjs.com.
+
+To back out instead: `npm stage reject <stage-id>` removes it from staging. Nothing
+was published, so nothing needs unpublishing.
+
+### 4. Promote (CI, `mode=promote`)
+
+Re-dispatch with mode `promote`. It first verifies the version is actually live on
+the public registry — which is proof a human approved it — and only then:
+
+- tags `v<version>` and pushes
+- opens the GitHub release with notes extracted from `CHANGELOG.md`
+
+If the version is not live, the job fails rather than tagging something nobody can
+install.
+
+## Verifying
+
+```bash
+npm view range-ts version          # the new version
+npm view range-ts dist.tarball     # tarball URL
+npm view range-ts dist.fileCount   # 55 — see the allowlist note below
+git tag -l 'v*' | tail -3         # tag present
+```
 
 ## Rollback
 
 npm does not unpublish cleanly — the version stays reserved for 24h and is
-discouraged after 72h. The preferred rollback is **forward**: fix forward and
-publish the next patch. If a version must be pulled, deprecate it rather than
-delete it:
+discouraged after 72h. Prefer moving forward. If a version must be pulled,
+deprecate rather than delete:
 
 ```bash
 npm deprecate "range-ts@1.0.0" "broken: <reason>"
 ```
 
-That leaves the package installable but warns everyone, which is recoverable.
-Deleting is not.
+Deprecation leaves the package installable but warns everyone, which is
+recoverable. Deleting is not.
 
-## Notes on this repo's specifics
+If the package is still only **staged**, rollback is trivial: `npm stage reject`.
 
+## Repo-specific notes
+
+- **Never pass a package-spec to `npm stage publish`.** `npm stage publish range-ts`
+  resolves the name against the *registry*, not the working directory, and fails
+  with "You cannot publish over the previously published versions". Publish the
+  current directory by passing nothing (or `.`).
 - **Do not add `--omit=optional` to any install here.** TypeScript 7 ships its
   compiler as a platform-specific optionalDependency; omitting optionals deletes
   the compiler. See the comment in `main.yml`.
 - **`ignore-scripts=true` and `min-release-age=7`** in `.npmrc` apply to the
-  publish build too. They are compatible with publishing: the native TS packages
-  are prebuilt binaries needing no install script.
+  release build too. Compatible with publishing: the native TS packages are
+  prebuilt binaries needing no install script.
 - **The tarball is allowlisted** by `files` in `package.json`
   (`dist/cjs`, `dist/esm`, `dist/types`, README, LICENSE, CHANGELOG). Before the
-  allowlist, `npm publish` shipped 469 files / 14.2 MB including every tsconfig
-  and `tsconfig.tsbuildinfo`. Check `dist.fileCount` in the verify step rather
-  than trusting it stayed fixed.
+  allowlist, publish shipped 469 files / 14.2 MB including every tsconfig and
+  `tsconfig.tsbuildinfo`. Check `dist.fileCount` rather than trusting it held.
 - **Code Climate is gone.** The test reporter is archived
   (`qltysh-archive/test-reporter`) and its download URLs 404. Coverage lives in
   the local istanbul and Stryker reports only.
