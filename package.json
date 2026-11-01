@@ -47,7 +47,10 @@
     "test:chrome": "npm run compile:karma && node -e \"const fs=require('fs'); const specs=fs.globSync('dist/karma/**/*.spec.js'); if(!fs.existsSync('dist/karma/test.js')||specs.length===0) throw new Error('zero compiled specs under dist/karma — refusing to report a passing Chrome run over no tests'); console.log('compiled specs for karma:', specs.length)\" && karma start dist/karma-conf/karma.conf.js --single-run --no-auto-watch --browsers ChromeHeadless --reporters kjhtml,junit,coverage-istanbul",
     "test:mutation": "npm run compile:spec-node && stryker run",
     "test": "npm-run-all check:dependabot test:node test:jsdom test:chrome",
-    "test-dev": "npm run compile:karma && karma start dist/karma-conf/karma.conf.js"
+    "test-dev": "npm run compile:karma && karma start dist/karma-conf/karma.conf.js",
+    "bench": "node ./bench/run.mjs",
+    "bench:check": "node ./bench/run.mjs --check",
+    "bench:baseline": "node ./bench/run.mjs --update-baseline"
   },
   "author": "Marc Fokkert <marcfokkert@xz1.nl>",
   "license": "MIT",

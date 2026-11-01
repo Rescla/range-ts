@@ -1,0 +1,63 @@
+{
+  "_note": "Recorded absolute times for drift detection only. The gate is the exponent in bench/cases.mjs. Regenerate with `npm run bench:baseline` after an intentional performance change.",
+  "recordedAt": "2026-11-01T20:05:46.859Z",
+  "node": "v26.12.0",
+  "smallN": 20000,
+  "measurements": {
+    "putCoalescing (append, sequential)": {
+      "smallMs": 15.041913,
+      "largeMs": 33.278366,
+      "exponent": 1.1455965397800947
+    },
+    "putCoalescing (random order)": {
+      "smallMs": 28.524022,
+      "largeMs": 80.902118,
+      "exponent": 1.5040000507586517
+    },
+    "put (append, sequential)": {
+      "smallMs": 5.384205,
+      "largeMs": 13.063773,
+      "exponent": 1.2787663817782648
+    },
+    "put (random order)": {
+      "smallMs": 19.496695,
+      "largeMs": 40.820517,
+      "exponent": 1.0660648695693093
+    },
+    "get hit": {
+      "smallMs": 3.074865,
+      "largeMs": 6.668202,
+      "exponent": 1.1167747373506705
+    },
+    "get miss (in the gaps)": {
+      "smallMs": 3.260203,
+      "largeMs": 7.314504,
+      "exponent": 1.1657982396516064
+    },
+    "remove (many small interior cuts)": {
+      "smallMs": 20.426569,
+      "largeMs": 44.531755,
+      "exponent": 1.1243875711054636
+    },
+    "remove (wide chunks across the domain)": {
+      "smallMs": 0.035848,
+      "largeMs": 0.066765,
+      "exponent": 0.8971993699082826
+    },
+    "subRangeMap (half the domain)": {
+      "smallMs": 1.33867,
+      "largeMs": 4.461997,
+      "exponent": 1.7368891826628405
+    },
+    "asMapOfRanges (full materialise)": {
+      "smallMs": 1.524639,
+      "largeMs": 4.082073,
+      "exponent": 1.4208342968338488
+    },
+    "span": {
+      "smallMs": 0.363311,
+      "largeMs": 0.996359,
+      "exponent": 1.455460609126645
+    }
+  }
+}

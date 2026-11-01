@@ -564,4 +564,277 @@ describe("an empty range associates nothing", () => {
     const sub = m.subRangeMap(NumberRange.closedOpen(5, 10));
     expect(sub.asMapOfRanges().size).toBe(0);
   });
+
+  describe("coalescing reaches both neighbours, not just the touched one", () => {
+    // These cases came out of a differential run of the rewritten write path
+    // against the previous implementation. The old code partitioned every
+    // entry into connected/unconnected against the ORIGINAL range and then
+    // absorbed only the connected same-value ones, so a neighbour that only
+    // became adjacent AFTER the first absorb was left unmerged. Guava probes
+    // lowerEntry(lowerBound) and floorEntry(upperBound) and spans the
+    // already-extended range, which reaches both. These specs pin that.
+
+    it("merges the entry that only becomes adjacent after the first absorb", () => {
+      const m = new RangeMap<string>();
+      m.put(NumberRange.open(10, 13), "b");
+      m.put(NumberRange.closed(6, 12), "b");
+      // map is now [6..12]=>b, (12..13)=>b  (plain puts do not coalesce)
+
+      m.putCoalescing(NumberRange.closed(13, 13), "b");
+
+      // Absorbing (12..13) makes the range (12..13], which is now adjacent
+      // to [6..12] with the same value, so that merges too.
+      const result = Array.from(m.asMapOfRanges().entries());
+      expect(result.length).toBe(1);
+      expect(result[0][0].toString()).toBe("[6..13]");
+      expect(result[0][1]).toBe("b");
+    });
+
+    it("merges through a split entry on the far side", () => {
+      const m = new RangeMap<string>();
+      m.put(NumberRange.openClosed(12, 16), "c");
+      m.put(NumberRange.closed(13, 14), "c");
+      // map is now (12..13)=>c, [13..14]=>c, (14..16]=>c
+
+      m.putCoalescing(NumberRange.openClosed(15, 16), "c");
+
+      const result = Array.from(m.asMapOfRanges().entries());
+      expect(result.map((e) => e[0].toString())).toEqual([
+        "(12..13)",
+        "[13..16]",
+      ]);
+    });
+
+    it("absorbs both sides in one call and loses nothing", () => {
+      // The one property that had to hold: transitive merging may reduce the
+      // entry count, but no key that had a value may become null. Checked over
+      // 6000 randomised mixed put/putCoalescing/remove sequences against the
+      // old build (0 losses; 24 differences, every one of them a merge).
+      const m = new RangeMap<string>();
+      m.put(NumberRange.closed(0, 10), "a");
+      m.put(NumberRange.closed(10, 20), "a");
+      // Two touching same-value entries; plain puts deliberately do not merge.
+
+      m.putCoalescing(NumberRange.closed(15, 25), "a");
+
+      // Absorbs [10..20] on the left, which then touches [0..10] with the
+      // same value, so that merges too.
+      expect(m.asMapOfRanges().size).toBe(1);
+      for (let k = 0; k <= 25; k++) {
+        expect(m.get(k)).toBe("a");
+      }
+    });
+
+    it("stops at a neighbour carrying a different value", () => {
+      const m = new RangeMap<string>();
+      m.put(NumberRange.closed(0, 5), "a");
+      m.put(NumberRange.closed(10, 15), "b");
+
+      m.putCoalescing(NumberRange.closed(5, 10), "a");
+
+      // Merges left into [0..10] (touching, equal), but the 'b' entry only
+      // gets truncated — differing values never coalesce.
+      const result = Array.from(m.asMapOfRanges().entries());
+      expect(result.map((e) => `${e[0]}=>${e[1]}`)).toEqual([
+        "[0..10]=>a",
+        "(10..15]=>b",
+      ]);
+    });
+  });
+
+  describe("write path: the straddler matrix", () => {
+    // spliceOverlapping keeps at most one leftover on the left and one on the
+    // right of the written range. Each combination is a separate branch, and
+    // mutation testing showed several of them untested. Base map is one entry.
+    const base = () => {
+      const m = new RangeMap<string>();
+      m.put(NumberRange.closed(10, 20), "a");
+      return m;
+    };
+    const snap = (m: RangeMap<string>) =>
+      Array.from(m.asMapOfRanges().entries()).map((e) => `${e[0]}=>${e[1]}`);
+
+    it("closed write inside an entry splits it into three", () => {
+      const m = base();
+      m.put(NumberRange.closed(13, 16), "b");
+      expect(snap(m)).toEqual([
+        "[10..13)=>a",
+        "[13..16]=>b",
+        "(16..20]=>a",
+      ]);
+    });
+
+    it("open write inside an entry flips both leftover boundaries", () => {
+      // Exercises the cut-side arithmetic: an OPEN lower bound leaves the
+      // left piece CLOSED at the value, an OPEN upper bound leaves the right
+      // piece CLOSED at the value.
+      const m = base();
+      m.put(NumberRange.open(13, 16), "b");
+      expect(snap(m)).toEqual([
+        "[10..13]=>a",
+        "(13..16)=>b",
+        "[16..20]=>a",
+      ]);
+    });
+
+    it("write aligned with the left edge produces no left leftover", () => {
+      const m = base();
+      m.put(NumberRange.closed(10, 16), "b");
+      expect(snap(m)).toEqual(["[10..16]=>b", "(16..20]=>a"]);
+    });
+
+    it("write aligned with the right edge produces no right leftover", () => {
+      const m = base();
+      m.put(NumberRange.closed(13, 20), "b");
+      expect(snap(m)).toEqual(["[10..13)=>a", "[13..20]=>b"]);
+    });
+
+    it("write covering the entry leaves nothing behind", () => {
+      const m = base();
+      m.put(NumberRange.closed(5, 25), "b");
+      expect(snap(m)).toEqual(["[5..25]=>b"]);
+    });
+
+    it("remove aligned with the left edge", () => {
+      const m = base();
+      m.remove(NumberRange.closed(10, 16));
+      expect(snap(m)).toEqual(["(16..20]=>a"]);
+    });
+
+    it("remove aligned with the right edge", () => {
+      const m = base();
+      m.remove(NumberRange.closed(13, 20));
+      expect(snap(m)).toEqual(["[10..13)=>a"]);
+    });
+
+    it("remove in the middle leaves both leftovers", () => {
+      const m = base();
+      m.remove(NumberRange.closed(13, 16));
+      expect(snap(m)).toEqual(["[10..13)=>a", "(16..20]=>a"]);
+    });
+
+    it("remove over a gap changes nothing", () => {
+      const m = base();
+      m.remove(NumberRange.closed(30, 40));
+      expect(snap(m)).toEqual(["[10..20]=>a"]);
+    });
+
+    it("write between two entries touches neither leftover", () => {
+      const m = new RangeMap<string>();
+      m.put(NumberRange.closed(0, 5), "a");
+      m.put(NumberRange.closed(20, 25), "c");
+      m.put(NumberRange.closed(10, 15), "b");
+      expect(snap(m)).toEqual([
+        "[0..5]=>a",
+        "[10..15]=>b",
+        "[20..25]=>c",
+      ]);
+    });
+
+    it("write straddling two entries merges their span", () => {
+      const m = new RangeMap<string>();
+      m.put(NumberRange.closed(0, 5), "a");
+      m.put(NumberRange.closed(10, 15), "c");
+      m.put(NumberRange.closed(3, 12), "b");
+      expect(snap(m)).toEqual([
+        "[0..3)=>a",
+        "[3..12]=>b",
+        "(12..15]=>c",
+      ]);
+    });
+  });
+
+  describe("write path: cut arithmetic", () => {
+    // Each case below is the MINIMAL witness found by applying a surviving
+    // Stryker mutant to the built CJS and searching randomised operation
+    // sequences for one that distinguishes mutant from clean, then shrinking
+    // it. They are not illustrative — each pins a specific branch of the cut
+    // comparison in the binary searches.
+    //
+    // The eight remaining survivors in this code (the `start >= end` early
+    // return, the two straddler comparisons, the `!kept.isEmpty()` guards and
+    // the floor-entry splice) were checked the same way and found genuinely
+    // EQUIVALENT: no input over 6000 randomised sequences distinguishes them.
+    // Rationale in docs/1.0.0-notes.md.
+
+    const snap = (m: RangeMap<string>) =>
+      Array.from(m.asMapOfRanges().entries()).map((e) => `${e[0]}=>${e[1]}`);
+
+    it("keeps a zero-width entry when the value comparison decides", () => {
+      // Kills `c !== 0` -> `true` in both firstLowerCutAfter and
+      // firstUpperCutAfter: ignoring the value comparison drops [0..0].
+      const m = new RangeMap<string>();
+      m.putCoalescing(NumberRange.closedOpen(0, 3), "a");
+      m.put(NumberRange.openClosed(0, 5), "c");
+      expect(snap(m)).toEqual(["[0..0]=>a", "(0..5]=>c"]);
+    });
+
+    it("keeps the tail entry when the value comparison decides", () => {
+      // Kills `c !== 0` -> `false` and `c !== 0` -> `c === 0`: inverting the
+      // value test drops the surviving (7..10] tail.
+      const m = new RangeMap<string>();
+      m.putCoalescing(NumberRange.open(6, 10), "b");
+      m.put(NumberRange.openClosed(2, 7), "c");
+      expect(snap(m)).toEqual(["(2..7]=>c", "(7..10)=>b"]);
+    });
+
+    it("subtracts the probe side rather than adding it", () => {
+      // Kills `lowerCutSide(r) - side` -> `+ side`: removing the very entry
+      // that was just written leaves a ghost behind.
+      const m = new RangeMap<string>();
+      m.put(NumberRange.closed(6, 6), "a");
+      m.remove(NumberRange.closed(6, 6));
+      expect(snap(m)).toEqual([]);
+    });
+
+    it("keeps the advance test strict-or-equal as written", () => {
+      // Kills `cut <= 0` -> `true` in firstLowerCutAfter: always advancing
+      // shatters the merged run into four pieces.
+      const m = new RangeMap<string>();
+      m.putCoalescing(NumberRange.closedOpen(13, 17), "a");
+      m.putCoalescing(NumberRange.open(8, 12), "c");
+      m.putCoalescing(NumberRange.closed(5, 10), "c");
+      expect(snap(m)).toEqual(["[5..12)=>c", "[13..17)=>a"]);
+    });
+
+    it("does not let the side comparison override a differing value", () => {
+      // Kills `c !== 0` -> `true` in firstLowerCutAfter: skipping the value
+      // comparison makes the search treat 13 as the cut when the entry there
+      // is 14, splitting [14..17) off wrongly.
+      const m = new RangeMap<string>();
+      m.put(NumberRange.closedOpen(13, 17), "c");
+      m.putCoalescing(NumberRange.open(13, 14), "b");
+      m.putCoalescing(NumberRange.closedOpen(12, 13), "c");
+      expect(snap(m)).toEqual(["[12..13]=>c", "(13..14)=>b", "[14..17)=>c"]);
+    });
+
+    it("subtracts the probe side in the lower-cut comparison", () => {
+      // Kills `lowerCutSide(r) - side` -> `+ side`: the wrong sign swallows
+      // the (8..9] tail into [4..9].
+      const m = new RangeMap<string>();
+      m.put(NumberRange.closed(6, 9), "c");
+      m.put(NumberRange.open(7, 9), "b");
+      m.put(NumberRange.closed(4, 8), "b");
+      m.putCoalescing(NumberRange.closed(9, 9), "b");
+      expect(snap(m)).toEqual(["[4..8]=>b", "(8..9]=>b"]);
+    });
+
+    it("subtracts the probe side in the upper-cut comparison", () => {
+      // Kills `upperCutSide(r) - side` -> `+ side`: the wrong sign closes the
+      // upper bound of the first entry at 11, which should stay open.
+      const m = new RangeMap<string>();
+      m.put(NumberRange.open(9, 11), "a");
+      m.put(NumberRange.open(11, 12), "a");
+      expect(snap(m)).toEqual(["(9..11)=>a", "(11..12)=>a"]);
+    });
+
+    it("absorbs a neighbour sitting exactly on the probe cut", () => {
+      // Kills `cut <= 0` -> `cut < 0`: the strict form refuses the equal cut
+      // and leaves two entries where one merged.
+      const m = new RangeMap<string>();
+      m.put(NumberRange.closedOpen(12, 15), "c");
+      m.putCoalescing(NumberRange.open(8, 12), "c");
+      expect(snap(m)).toEqual(["(8..15)=>c"]);
+    });
+  });
 });

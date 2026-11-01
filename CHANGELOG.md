@@ -156,14 +156,45 @@ full reasoning in [docs/1.0.0-notes.md](docs/1.0.0-notes.md).
 - **CI token permissions made explicit** — `main.yml` and `codeql-analysis.yml`
   had no `permissions:` key and inherited the repo default.
 
+### Performance
+
+- **`RangeMap` writes are no longer O(n²).** Every write (`put`,
+  `putCoalescing`, `remove`) previously walked the whole entry array; a
+  40 000-entry build took **15.0 s**. Writes now bound the overlapping window
+  with two binary searches and one `splice` — O(log n + k). Same build:
+  **~0.1 s**. At n=4000→8000: `put` 118× faster, `remove` 107×,
+  `putCoalescing` 46×.
+- **Check this if you build large maps in a loop**: no API change, but a
+  workload that previously timed out should now complete.
+- The algorithm is ported from Guava's `TreeRangeMap`; the **data structure
+  deliberately is not**. A sorted array beats a skip list in JS (100k lookups:
+  19.6 ms vs 56.7 ms) because `splice` is a native `memmove` ~50× cheaper
+  per element than a JS-level scan, and reads dominate.
+- Stated guarantee: **reads O(log n); writes O(n) worst case** with a native
+  memmove constant. Interior removes are still quadratic in the limit
+  (measured O(n^2.03)) but 300–500× faster than the old scan at every size.
+- **New `npm run bench` / `bench:check` / `bench:baseline`** — separate from
+  `npm test`. Gates on the scaling *exponent* (machine-independent) rather
+  than absolute time, with 11 scenarios. Not a regression gate you can skip:
+  it is what would have caught the original O(n²).
+
 ### Quality
 
-- 266 specs across node, jsdom and Chrome (was 223).
-- Mutation score 78.9% → 94.9% → 93.71% → 93.89% → **94.27%** (564 killed,
-  12 timeout, 35 survived of 611). All 35 survivors individually classified —
-  see the notes. The new `bound-type.js` file went 67.65% → 91.18% under the
-  same scrutiny; its three remaining survivors are TypeScript's emitted
-  `__esModule` prologue, not library logic.
+- 289 specs across node, jsdom and Chrome (was 223).
+- Mutation score 78.9% → 94.9% → 93.71% → 93.89% → 94.27% → **93.03%**
+  (637 killed, 17 timeout, 49 survived of 703). The dip is denominator, not
+  coverage: the rewrite added 92 mutants, 7 of them real gaps now pinned by
+  specs carrying the exact witness that kills each one.
+- All survivors in the rewritten write path individually classified by
+  **patching each mutant into a copy of the build and searching 6 000
+  randomised sequences for a distinguishing input**: 7 killable (now killed),
+  8 proven genuinely equivalent (no input distinguishes them, so a spec would
+  be theatre). The first pass at this was wrong twice — 1-based column offsets
+  shifted every patch a character, and two near-identical search functions
+  made a first-match replace hit the wrong one.
+- The new `bound-type.js` file went 67.65% → 91.18% under the same scrutiny;
+  its three remaining survivors are TypeScript's emitted `__esModule`
+  prologue, not library logic.
 - Differential against 0.1.8 over the shared API surface: **no `true → false`
   regressions** and **no new throws on non-inverted input**.
 - Legacy and exact-domain consumer projects typecheck under `strict` with
