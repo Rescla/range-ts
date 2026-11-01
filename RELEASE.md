@@ -13,10 +13,10 @@ The publish step needs one of these configured on npmjs.com for this package:
    stored as a GitHub Actions secret on the repo. This is what the workflow uses
    today.
 2. **Trusted publishing (preferred once set up)** — OIDC from this repo, no
-   long-lived token. Requires npm ≥ 11.5.1 and Node ≥ 22.14.0; the workflow
-   upgrades npm to 11 explicitly because Node 22's bundled npm is 10.9.9, which
-   is too old. Once configured in the npm UI (repo `Rescla/range-ts`, workflow
-   `.github/workflows/release.yml`), `NPM_AUTH_TOKEN` can be deleted.
+   long-lived token. Requires npm ≥ 11.5.1 and Node ≥ 22.14.0. CI runs Node 26
+   (current LTS), whose bundled npm 11.20.0 already clears both, so no npm
+   upgrade step is needed. Once configured in the npm UI (repo `Rescla/range-ts`,
+   workflow `.github/workflows/release.yml`), `NPM_AUTH_TOKEN` can be deleted.
 
 Without either, the publish step fails with `ENEEDAUTH` and nothing else in the
 release happens. `npm whoami` returning `ENEEDAUTH` on a workstation is expected;
@@ -59,7 +59,7 @@ The workflow does, in order:
 
 | Step | Why it is where it is |
 |---|---|
-| Pin npm to 11 | Node 22 bundles 10.9.9; provenance/trusted publishing needs ≥11.5.1 |
+| Show toolchain | Logs the exact node/npm that produced the artifact and attestation, instead of leaving it inferred from the runner image |
 | `npm ci` + `npm run build` | build runs the full suite, so a red test stops before publish |
 | Refuse if version exists | publishing over an existing version fails mid-flow and strands the tag |
 | `npm publish --provenance --access public` | the actual publish |

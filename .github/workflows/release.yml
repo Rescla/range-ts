@@ -30,19 +30,21 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          # Latest LTS. Its bundled npm (11.20.0 as of Node 26.13.0) already
+          # satisfies what provenance and trusted publishing need, so there is no
+          # separate npm upgrade step here.
+          node-version: '26'
           registry-url: 'https://registry.npmjs.org'
 
-      # The npm bundled with Node 22 is 10.9.9. Trusted publishing needs npm
-      # >= 11.5.1 (and Node >= 22.14.0), so without this upgrade the token-free
-      # path is unavailable and `--provenance` falls back to token-only.
-      # Pinning the npm we publish with also means the provenance attestation is
-      # made by a known CLI version rather than whatever the image drifted to.
-      - name: Pin npm used for publishing
-        run: npm install -g npm@11
-
+      # Record the exact toolchain that produced the artifact and the attestation.
+      # This is the determinism evidence: the run log says which node/npm published,
+      # rather than leaving it inferred from whatever the runner image drifted to.
       - name: Show toolchain
-        run: node -v && npm -v && npm config get ignore-scripts && npm config get min-release-age
+        run: |
+          node -v
+          npm -v
+          echo "ignore-scripts = $(npm config get ignore-scripts)"
+          echo "min-release-age = $(npm config get min-release-age)"
 
       - name: Npm ci
         run: npm ci

@@ -21,10 +21,13 @@ jobs:
       # schema-utils' peerOptional, npm 11 did not, so a lockfile written by one
       # was "out of sync" for the other. Pinning Node (and a lockfile that now
       # installs cleanly under both npm 10 and 11) makes this deterministic.
+      #
+      # Node 26 is the current LTS and matches the version this package is
+      # developed on locally.
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '26'
 
       # NOTE: do NOT add --omit=optional here.
       #
