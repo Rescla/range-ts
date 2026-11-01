@@ -3,21 +3,44 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
+
       # Same toolchain pin as CI (see main.yml): an unpinned runner npm resolves
       # optional peer deps differently and can call a valid lockfile "out of sync".
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
       - name: Npm ci
         run: npm ci
+
       - name: Run build
         run: npm run build
-      - uses: Github-Actions-Community/merge-release@main
+
+      # This step used to be `Github-Actions-Community/merge-release@main`. That
+      # repository does not exist: the GitHub API returns 404 for every casing
+      # variant and `git ls-remote` falls through to a credentials prompt (which
+      # is how GitHub answers for absent/private repos), while the same probe on
+      # actions/checkout returns a HEAD sha. So the step could never have run, and
+      # a floating `@main` on an unregistered org name is exactly the shape a
+      # later squat would take.
+      #
+      # Replaced with the documented plain publish path: setup-node points npm at
+      # the registry and NODE_AUTH_TOKEN authenticates it. No third-party action,
+      # so nothing unpinned to audit.
+      - name: Publish to npm
+        run: npm publish --access public
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
+
+      # Optional hardening, not enabled because it needs account-side setup:
+      # `npm publish --provenance` requires npm >= 11.14 and a configured trusted
+      # publisher for this package on npmjs.com. Turn it on once that exists and
+      # the token above can be dropped entirely.

@@ -23,7 +23,7 @@ jobs:
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
 
       # Pin the toolchain. Without this the job uses whatever Node/npm the runner
       # image happens to ship, and npm versions resolve optional peer deps
@@ -32,7 +32,7 @@ jobs:
       # was "out of sync" for the other. Pinning Node (and a lockfile that now
       # installs cleanly under both npm 10 and 11) makes this deterministic.
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
 

@@ -12,6 +12,16 @@
     "cut against current source."
   ],
   "testRunner": "command",
+  "_tsconfigFile_comment": [
+    "We mutate already-compiled CJS, so Stryker's TypeScript sandbox rewriting is",
+    "unnecessary here — and TypeScript 7 (the Go rewrite) removed",
+    "ts.parseConfigFileTextToJson, which that rewriting calls, so leaving it on",
+    "crashes Stryker 10.1.1 outright. Pointing tsconfigFile at a path that is not",
+    "in the project file set makes the preprocessor find nothing to rewrite and",
+    "skip the call. If you ever enable @stryker-mutator/typescript-checker, this",
+    "needs a real tsconfig and a Stryker release that supports TS 7."
+  ],
+  "tsconfigFile": "stryker-no-tsconfig.json",
   "commandRunner": {
     "command": "npx --no-install jasmine --config=jasmine.node.json"
   },
