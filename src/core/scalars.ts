@@ -153,9 +153,11 @@ export const bigintScalar: Scalar<BigIntPoint> = {
     if (a === BIGINT_MINUS_INFINITY) {
       throw new Error("minusInfinity has no successor within the finite domain");
     }
-    // BigInt(1) rather than 1n: this package compiles to ES5 for cjs/esm5/karma,
-    // where BigInt *literals* are a syntax error. Calls are target-agnostic and
-    // only require BigInt at runtime, which is the consumer's domain to have.
+    // Call form, not the `1n` literal. Our own build targets es2020, where both
+    // are valid, but a bigint LITERAL is ES2020 *syntax*: a consumer
+    // transpiling this ESM to an older target hits a parse error on `1n` where
+    // `BigInt(1)` parses fine. (The `BigInt` runtime is required either way —
+    // this only avoids failing at parse time, it is not a polyfill.)
     return a + BigInt(1);
   },
 
@@ -166,6 +168,7 @@ export const bigintScalar: Scalar<BigIntPoint> = {
     if (a === BIGINT_PLUS_INFINITY) {
       throw new Error("plusInfinity has no predecessor within the finite domain");
     }
+    // Call form for the same reason as in `succ`.
     return a - BigInt(1);
   },
 };

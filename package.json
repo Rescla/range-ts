@@ -34,6 +34,7 @@
     "test:node": "npm run compile:spec-node && jasmine --config=jasmine.node.json",
     "test:jsdom": "npm run compile:spec-node && jasmine --config=jasmine.jsdom.json",
     "test:chrome": "npm run compile:karma && node -e \"const fs=require('fs'); const specs=fs.globSync('dist/karma/**/*.spec.js'); if(!fs.existsSync('dist/karma/test.js')||specs.length===0) throw new Error('zero compiled specs under dist/karma — refusing to report a passing Chrome run over no tests'); console.log('compiled specs for karma:', specs.length)\" && karma start src/karma.conf.js --single-run --no-auto-watch --browsers ChromeHeadless --reporters kjhtml,junit,coverage-istanbul",
+    "test:mutation": "npm run compile:spec-node && stryker run",
     "test": "npm-run-all test:node test:jsdom test:chrome",
     "test-dev": "karma start src/karma.conf.js"
   },

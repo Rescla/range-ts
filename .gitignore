@@ -57,6 +57,15 @@ debug.log
 tsconfig.tsbuildinfo
 /.tsbuildinfo
 
+# Packed tarballs (`npm pack`) are reproducible output, not source. Committing
+# one is a trap: it silently goes stale against HEAD, and then it is being cited
+# as evidence of a build that no longer matches the tree. That is exactly what
+# happened with the 1.0.0 candidate — the committed .tgz still carried
+# `## [1.0.0] - Unreleased` while HEAD had the dated entry. Keep the *report*
+# (commands + output) if you want the verification on record, not the bytes.
+*.tgz
+*.tar.gz
+
 # System Files
 .DS_Store
 Thumbs.db

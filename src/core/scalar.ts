@@ -53,6 +53,16 @@ export interface Scalar<T> {
    * Must also order the domain's own infinities correctly, since they are values
    * of `T` like any other: compare(minusInfinity, x) < 0 and
    * compare(plusInfinity, x) > 0 for every other x.
+   *
+   * UNORDERED OPERANDS: if the domain has values that are not ordered against
+   * others (JS `NaN` is the obvious one), return `NaN` rather than picking a
+   * direction. Callers use `< 0`, `> 0` and `=== 0`, and every one of those is
+   * false for `NaN`, so an unordered comparison reads as "neither less, equal,
+   * nor greater" — which is what the pre-generics implementation did for `NaN`
+   * endpoints and what keeps that behaviour unchanged. Do NOT return 0 for an
+   * unordered pair: that would make `NaN` equal to everything it is compared
+   * with, and `intersection`/`span` would merge bound types on a false equality.
+   * See `comparableScalar`, which is the implementation that can hit this.
    */
   compare(a: T, b: T): number;
 

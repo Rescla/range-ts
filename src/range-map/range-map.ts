@@ -1,8 +1,35 @@
 import { BoundType } from "../core/bound-type";
+import { Comparable } from "../core/comparable";
+import { NumberRange } from "../number-range/number-range";
 import { Range } from "../range/range";
 
-export interface RangeValue<T, P = any> {
-  range: Range<P>;
+/**
+ * The concrete range class a map uses when the caller does not name one.
+ *
+ * This exists for back-compat. In 0.1.8 every range that came out of a
+ * `RangeMap` was a `NumberRange`, and consumers annotated accordingly
+ * (`const s: NumberRange = m.span()`). When the map went generic those returns
+ * were widened to `Range<P>`, which does not assign to `NumberRange` — so
+ * unchanged 0.1.8 code stopped compiling even though the runtime object was
+ * still a NumberRange. Deriving the default from the point domain keeps both
+ * shapes honest: `Comparable` points get `NumberRange`, anything else gets the
+ * plain generic `Range`.
+ *
+ * The `[P] extends [Comparable]` tuple form is deliberate, not stylistic. The
+ * bare `P extends Comparable ? … : …` distributes over a union `P`, and the
+ * exact-domain point type IS a union (`bigint | "+INF" | "-INF"`), so it would
+ * produce `Range<bigint> | Range<"+INF"> | Range<"-INF">` — which a plain
+ * `Range<BigIntPoint>` is not assignable to, and every exact-domain call site
+ * would fail to compile.
+ */
+export type DefaultRange<P> = [P] extends [Comparable] ? NumberRange : Range<P>;
+
+export interface RangeValue<
+  T,
+  P = Comparable,
+  R extends Range<any> = DefaultRange<P>
+> {
+  range: R;
   value: T;
 }
 
@@ -32,20 +59,20 @@ function compareLower<P>(a: Range<P>, b: Range<P>): number {
  * The scalar is passed as a 5th argument; subclasses with a 4-arg constructor
  * (NumberRange) simply ignore it, while `Range` itself uses it.
  */
-function likeRange<P>(
-  proto: Range<P>,
+function likeRange<P, R extends Range<P>>(
+  proto: R,
   lower: P,
   lowerBound: BoundType,
   upper: P,
   upperBound: BoundType
-): Range<P> {
+): R {
   const Ctor = proto.constructor as new (
     a: P,
     b: BoundType,
     c: P,
     d: BoundType,
     e?: unknown
-  ) => Range<P>;
+  ) => R;
   return new Ctor(lower, lowerBound, upper, upperBound, proto.scalar);
 }
 
@@ -53,36 +80,46 @@ function likeRange<P>(
  * A Guava-style RangeMap: associates values with ranges of a point domain, and
  * coalesces/intersects them on write.
  *
- * `T` is the associated value type (unchanged from before). `P` is the POINT
- * domain, defaulting to `Comparable` so existing `new RangeMap<string>()` usage
- * compiles and behaves exactly as it did. To key the map on an exact domain,
- * pass it explicitly and use ranges built over the matching scalar:
+ * Three type parameters, two of which you normally never write:
  *
- *   const m = new RangeMap<string, bigint>();
+ *   `T` — the associated value type, unchanged from 0.1.8.
+ *   `P` — the POINT domain. Defaults to `Comparable`, the JS-number-backed
+ *         domain 0.1.8 always used.
+ *   `R` — the concrete range class the map accepts and hands back. Defaults to
+ *         `DefaultRange<P>`: `NumberRange` for `Comparable` points, plain
+ *         `Range<P>` otherwise. It is a parameter rather than a fixed
+ *         `Range<P>` because 0.1.8 consumers typed `m.span()` as `NumberRange`;
+ *         widening that return broke them at compile time while the runtime
+ *         instance was still a NumberRange.
+ *
+ * So `new RangeMap<string>()` compiles and behaves exactly as it did in 0.1.8,
+ * and an exact-domain map is written by naming the point type:
+ *
+ *   const m = new RangeMap<string, BigIntPoint>();
  *   m.putCoalescing(R.closedOpen(9007199254740993n, 9007199254740995n), "a");
  *
  * The scalar travels with each range, so the map never has to know what the point
  * type is; it asks the range.
  */
-export class RangeMap<T, P = any> {
-  private rangeValues: RangeValue<T, P>[] = [];
+export class RangeMap<T, P = Comparable, R extends Range<any> = DefaultRange<P>> {
+  private rangeValues: RangeValue<T, P, R>[] = [];
 
-  private static fromRangeValues<T, P>(
-    values: RangeValue<T, P>[],
+  private static fromRangeValues<T, P, RR extends Range<any>>(
+    values: RangeValue<T, P, RR>[],
     eq?: (a: T, b: T) => boolean
-  ): RangeMap<T, P> {
-    const rangeMap = new RangeMap<T, P>(eq);
+  ): RangeMap<T, P, RR> {
+    const rangeMap = new RangeMap<T, P, RR>(eq);
     rangeMap.rangeValues = values;
     return rangeMap;
   }
 
   constructor(private eq: (a: T, b: T) => boolean = (a, b) => a === b) {}
 
-  put(range: Range<P>, value: T): void {
+  put(range: R, value: T): void {
     this.combinedPut(range, value, false);
   }
 
-  putCoalescing(range: Range<P>, value: T): void {
+  putCoalescing(range: R, value: T): void {
     this.combinedPut(range, value, true);
   }
 
@@ -102,8 +139,8 @@ export class RangeMap<T, P = any> {
   /**
    * Returns a sorted copy of current values in this RangeMap
    */
-  asMapOfRanges(): Map<Range<P>, T> {
-    const newMap = new Map<Range<P>, T>();
+  asMapOfRanges(): Map<R, T> {
+    const newMap = new Map<R, T>();
     this.rangeValues
       .filter((range) => !range.range.isEmpty())
       .sort((a, b) => compareLower(a.range, b.range))
@@ -116,8 +153,8 @@ export class RangeMap<T, P = any> {
   /**
    * Returns a sorted map with the provided value as the key
    */
-  asMapOfValues(): Map<T, Range<P>[]> {
-    const newMap = new Map<T, Range<P>[]>();
+  asMapOfValues(): Map<T, R[]> {
+    const newMap = new Map<T, R[]>();
     this.rangeValues
       .filter((range) => !range.range.isEmpty())
       .sort((a, b) => compareLower(a.range, b.range))
@@ -135,9 +172,12 @@ export class RangeMap<T, P = any> {
   /**
    * Returns a view of the part of this range map that intersects with range.
    */
-  subRangeMap(range: Range<P>): RangeMap<T, P> {
+  subRangeMap(range: R): RangeMap<T, P, R> {
     const rangeValues = this.rangeValues.flatMap((rangeValue) => {
-      const intersection = rangeValue.range.intersection(range);
+      // The intersection is built by the range machinery, which returns the base
+      // class; the map's own R is the honest type because every range it holds is
+      // an R and `intersection` preserves the receiver's class.
+      const intersection = rangeValue.range.intersection(range) as R | null;
 
       if (!intersection) {
         return [];
@@ -157,7 +197,7 @@ export class RangeMap<T, P = any> {
   /**
    * Returns the range containing this key and its associated value, if such a range is present in the range map, or null otherwise.
    */
-  getEntry(key: P): [Range<P>, T] | null {
+  getEntry(key: P): [R, T] | null {
     const foundRangeValue = this.rangeValues.find((currentRangeValue) =>
       currentRangeValue.range.contains(key)
     );
@@ -170,7 +210,7 @@ export class RangeMap<T, P = any> {
   /**
    * Returns the minimal range enclosing the ranges in this RangeMap.
    */
-  span(): Range<P> | null {
+  span(): R | null {
     if (this.rangeValues.length === 0) {
       return null;
     }
@@ -195,7 +235,7 @@ export class RangeMap<T, P = any> {
    * Removes all associations from this range map in the specified range (optional operation).
    * If !range.contains(k), get(k) will return the same result before and after a call to remove(range). If range.contains(k), then after a call to remove(range), get(k) will return null.
    */
-  remove(range: Range<P>): void {
+  remove(range: R): void {
     if (range.isEmpty()) {
       return;
     }
@@ -218,13 +258,13 @@ export class RangeMap<T, P = any> {
    * are the public surface; this stays an internal, fully-specified helper.
    */
   private combinedPut(
-    range: Range<P>,
+    range: R,
     value: T,
     shouldPutCoalescing: boolean
   ): void {
-    let newRange: Range<P> = range;
-    let affectedRangeValues: RangeValue<T, P>[] = [];
-    const unaffectedRangeValues: RangeValue<T, P>[] = [];
+    let newRange: R = range;
+    let affectedRangeValues: RangeValue<T, P, R>[] = [];
+    const unaffectedRangeValues: RangeValue<T, P, R>[] = [];
 
     this.rangeValues.forEach((currentRangeValue) => {
       if (currentRangeValue.range.isConnected(newRange)) {
@@ -236,8 +276,11 @@ export class RangeMap<T, P = any> {
 
     affectedRangeValues = affectedRangeValues.flatMap((currentRangeValue) => {
       if (shouldPutCoalescing && this.eq(value, currentRangeValue.value)) {
-        // Should expand new range instead of inserting current
-        newRange = newRange.span(currentRangeValue.range);
+        // Should expand new range instead of inserting current.
+        // `span` is declared on the base class, so it hands back `Range<any>`;
+        // the instance it actually returns is built by the receiver's own
+        // constructor, so R is the honest type.
+        newRange = newRange.span(currentRangeValue.range) as R;
         return [];
       }
 
@@ -272,10 +315,10 @@ export class RangeMap<T, P = any> {
       );
 
       // Create new range values for any ranges that are not overlapped by the new range value
-      return ([rangeBefore, rangeAfter] as Range<P>[])
+      return ([rangeBefore, rangeAfter] as R[])
         .filter((a) => !!a)
         .filter((a) => !a.isEmpty())
-        .map((currentRange: Range<P>) => ({
+        .map((currentRange: R) => ({
           range: currentRange,
           value: currentRangeValue.value,
         }));

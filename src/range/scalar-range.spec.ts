@@ -9,8 +9,11 @@ import {
 import { defineRange } from "./range";
 import { RangeMap } from "../range-map/range-map";
 
-// BigInt(...) rather than a literal: this package compiles to ES5 for
-// cjs/esm5/karma, where `1n` is a syntax error.
+// A conversion helper, not a literal-vs-call choice: the spec builds points from
+// strings and numbers, so a literal is not available here. (That question lives
+// in `bigintScalar.succ`.) The old comment on this line claimed the package
+// compiled to ES5 for cjs/esm5/karma — no longer true: 1.0.0 targets es2020
+// throughout and tsconfig.esm5.json is deleted.
 const B = (v: string | number): bigint => BigInt(v);
 
 const R = defineRange(bigintScalar);

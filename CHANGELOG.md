@@ -56,11 +56,40 @@ is additive or tooling.
 - Removed `karma-typescript` / `karma-typescript-es6-transform` devDependencies:
   declared but never loaded (the Karma pipeline uses `karma-webpack`), and their
   `typescript@<=5` peer made them incompatible with TS 7.
+- **`RangeMap`'s range-returning methods no longer break 0.1.8 consumers at the
+  type level.** Going generic widened `getEntry`, `span`, `asMapOfRanges` and
+  `asMapOfValues` from `NumberRange` to `Range<P>`, so unchanged 0.1.8 code
+  like `const s: NumberRange = m.span()` stopped compiling with
+  `'Range<any>' is missing the following properties from type 'NumberRange':
+  lowerEndpointValue, upperEndpointValue`. The runtime object was a
+  `NumberRange` throughout — only the declaration had regressed. `RangeMap`
+  now takes a third type parameter `R`, the concrete range class it accepts
+  and hands back, defaulting to the new exported `DefaultRange<P>`:
+  `NumberRange` for `Comparable` points, plain `Range<P>` otherwise. So
+  `new RangeMap<string>()` is typed exactly as in 0.1.8, while
+  `new RangeMap<string, BigIntPoint>()` still gets `Range<BigIntPoint>` with no
+  extra annotation. The default is written `[P] extends [Comparable]` rather
+  than `P extends Comparable` deliberately: the bare form distributes over a
+  union point type, and `BigIntPoint` *is* a union
+  (`bigint | "+INF" | "-INF"`), which produced an unusable
+  `Range<bigint> | Range<"+INF"> | Range<"-INF">` at every exact-domain call
+  site.
 
 ### Quality
+- `npm run test:mutation` added as the scripted entry point for Stryker. The
+  config existed but no script did, so the 94.9% figure below had no
+  documented way to reproduce it.
+- Corrected comments that still asserted ES5 / `esm5` build targets after 1.0.0
+  removed them (`bigintScalar.succ`, `scalar-range.spec.ts`). The code was
+  fine; the justification named a deleted target.
+- `Scalar.compare` now documents the unordered-operand case explicitly: return
+  `NaN` for values like `NaN` rather than picking a direction or returning 0.
+  This matches what `comparableScalar` already did and what 0.1.8 behaved as,
+  but the interface previously promised a strict trichotomy it did not keep.
 - Mutation score 78.9% → 94.9% (483 killed, 1 timeout, 26 surviving; 9 of the
   survivors are `__esModule` boilerplate, the rest equivalent mutants or
-  defensive paths).
+  defensive paths). Re-run after the `RangeMap` typing fix landed: 94.90%,
+  483 killed / 1 timeout / 26 survived — unchanged.
 - 174 specs passing across node, jsdom and Chrome.
 - **Published artifact verified against 0.1.8 by installing the packed tarball
   into clean consumer projects**, not by inspecting the build directory:
@@ -70,9 +99,15 @@ is additive or tooling.
     `contains`, and `toString` rendering (`[1..5]`, `[0..+∞)`, `(-∞..+∞)`).
   - Node ESM `import` and dynamic `import()` both resolve and work.
   - `dist/esm` contains no CJS markers; `dist/cjs` is proper CJS.
-  - **Backwards compatibility confirmed at the type level**: the 0.1.8 usage
-    pattern `new RangeMap<string>()` + `NumberRange.closedOpen(...)` typechecks
-    clean against 1.0.0 under `strict` with `skipLibCheck: false`.
+  - **Backwards compatibility confirmed at the type level** — *this claim was
+    WRONG as originally written, and is left visible rather than quietly
+    deleted.* It read: "the 0.1.8 usage pattern `new RangeMap<string>()` +
+    `NumberRange.closedOpen(...)` typechecks clean against 1.0.0 under
+    `strict` with `skipLibCheck: false`." The pattern tested built the ranges
+    but never annotated the values that come back. Re-running the same consumer
+    file against both versions: **0.1.8 PASS, 1.0.0 FAIL** on all four
+    range-returning methods. See the `Fixed` entry above for the cause and the
+    fix; that same consumer file now typechecks clean against 1.0.0.
   - The new exact-domain path works in the shipped artifact: a `bigint` range
     correctly distinguishes `2^53 + 1` from `2^53`, which a JS `number`
     cannot. This is the feature's whole reason to exist and it was verified

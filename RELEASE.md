@@ -29,8 +29,12 @@ which bundles npm 11.20.0.
 ## Flow
 
 ```
-CI: stage  ──►  human: approve (2FA)  ──►  CI: promote (tag + GitHub release)
+CI: stage  ──►  human: approve (2FA)  ──►  human: tag + GitHub release
 ```
+
+CI's role ends at staging. It has no `contents: write` and pushes no refs, so it
+cannot tag a package nobody approved. Tagging and the release notes are done by
+the same human who approved, locally — see step 4.
 
 ### 1. Prepare (local, committed before anything is staged)
 
@@ -59,9 +63,11 @@ the code that the next `npm install` propagates silently. This was actually miss
 once: `package.json` said `1.0.0`, the lockfile said `0.1.8`, and CI still passed
 — `npm ci` does not check the root version field.
 
-### 2. Stage (CI, `mode=stage`)
+### 2. Stage (CI)
 
-Actions → **Release** → mode `stage`.
+Actions → **Release** → **Run workflow**. The only input is `dry_run` (tick it to
+run everything except the actual stage submission). There is no `mode` input:
+the workflow does exactly one thing.
 
 Builds, tests, then `npm stage publish --access public --provenance`. The job
 reports the **stage id** and the exact approve command in the run summary.
@@ -88,16 +94,41 @@ Or the **Staged Packages** tab on npmjs.com.
 To back out instead: `npm stage reject <stage-id>` removes it from staging. Nothing
 was published, so nothing needs unpublishing.
 
-### 4. Promote (CI, `mode=promote`)
+### 4. Promote (human, local — not in CI)
 
-Re-dispatch with mode `promote`. It first verifies the version is actually live on
-the public registry — which is proof a human approved it — and only then:
+There is no promote job in the workflow by design: it would need `contents: write`
+on a job whose whole purpose is to not publish. Do it locally, **after** the
+version is verifiably live:
 
-- tags `v<version>` and pushes
-- opens the GitHub release with notes extracted from `CHANGELOG.md`
+```bash
+# Gate first. Tagging something nobody can install is the failure this whole
+# document exists to prevent, so check the registry before you touch git.
+npm view range-ts version          # must print 1.0.0 — if not, it was never approved
 
-If the version is not live, the job fails rather than tagging something nobody can
-install.
+git fetch origin
+git status --porcelain             # must be clean; tag a committed tree only
+git tag v1.0.0
+git push origin v1.0.0
+
+# Release notes straight out of the CHANGELOG entry, so they cannot drift from it.
+gh release create v1.0.0 \
+  --title "1.0.0" \
+  --notes "$(awk '/^## \[/ { f = ($0 ~ /^## \[1\.0\.0\]/) } f { print }' CHANGELOG.md)"
+```
+
+If `npm view` does not print the version, stop: the package is still staged (or
+was rejected), and a tag would assert a release that does not exist.
+
+> **`gh` is a prerequisite for the last command and is not installed on every
+> machine** (it is absent on the box this was written on — `command -v gh` finds
+> nothing). The `git tag` + `git push` above are sufficient to tag; for the
+> release itself either install the CLI (`https://cli.github.com/`, auth with
+> `gh auth login`), or open
+> `https://github.com/Rescla/range-ts/releases/new?tag=v1.0.0` and paste the
+> CHANGELOG entry. The `awk` extraction is there so the notes cannot drift from
+> the changelog either way — if you use the web UI, paste from
+> `awk '/^## \[/ { f = ($0 ~ /^## \[1\.0\.0\]/) } f { print }' CHANGELOG.md`
+> rather than retyping.
 
 ## Verifying
 
@@ -106,6 +137,7 @@ npm view range-ts version          # the new version
 npm view range-ts dist.tarball     # tarball URL
 npm view range-ts dist.fileCount   # 55 — see the allowlist note below
 git tag -l 'v*' | tail -3         # tag present
+gh release view v1.0.0            # release present, notes rendered (needs gh; see note above)
 ```
 
 ## Rollback
