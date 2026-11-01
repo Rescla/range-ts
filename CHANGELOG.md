@@ -6,8 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - 2026-11-01
 
-First major release. Two breaking changes: the end of ES5 output, and deep imports
-being closed off. Everything else is additive or tooling.
+First major release. The breaking changes are the end of ES5 output, deep
+imports being closed off, test artifacts no longer being published, and
+corrected range algebra on empty ranges. The last of those is the one most
+likely to affect you: `intersection()` no longer returns `null` for a
+connected-but-empty result, which flips any `=== null` test on it. See the table
+in the Breaking section. Everything else is additive or tooling.
 
 ### Breaking
 - **ES5 output dropped.** All build targets now compile to `es2020`. The
@@ -28,6 +32,40 @@ being closed off. Everything else is additive or tooling.
   exported for tooling that reads the version.
   Before 1.0.0 there was no `exports` map, so anything under `dist/` was
   reachable by anyone who knew the layout.
+- **Range algebra on empty ranges changed, including a `null` that is no longer
+  `null`.** `encloses`, `isConnected`, `intersection` and `span` were computed
+  with `contains`, which answers a question about the whole range; for an empty
+  operand that returns false at both ends for reasons unrelated to the bound
+  under test, so the answers were wrong. They are now computed from Guava's
+  `Cut` ordering — the full reasoning is in the Fixed entry below. The fixes are
+  correct, but they change return values on inputs that were always valid, and
+  one of them flips a control-flow test:
+
+  | call | 0.1.8 | 1.0.0 |
+  | --- | --- | --- |
+  | `closedOpen(0,2).intersection(closedOpen(2,2))` | `null` | `[2..2)` |
+  | `closedOpen(0,2).isConnected(closedOpen(2,2))` | `false` | `true` |
+  | `closedOpen(0,2).encloses(closedOpen(2,2))` | `false` | `true` |
+  | `open(0,1).overlaps(open(0,1))` | `false` | `true` |
+
+  The last row is the bug that motivated the work: on 0.1.8 a range did not
+  overlap itself.
+
+  **What to check in your code:** any `=== null` or truthiness test on
+  `intersection()`. It previously conflated two different facts. It now means
+  only "not connected", and a connected-but-empty result comes back as a range
+  object. If you meant "no overlap", test `.isEmpty()`, not `=== null`.
+
+  **Scope, measured rather than estimated.** The shared API surface
+  (`NumberRange`/`RangeMap`/`BoundType`) was fingerprinted on both versions
+  across all 40 constructible ranges over 0..3 with all four bound-type
+  combinations, every ordered pair — 1600 pairs across 6 methods, so 9600
+  probes. 186 results changed. Every
+  one of them involves an empty operand or a self-comparison of an open range.
+  **Zero** changes on distinct non-empty pairs, and **zero** changes in the
+  `true → false` direction: every difference is `false`/`null` becoming
+  `true`/a value. Code that was correct on 0.1.8 for ordinary ranges is
+  unaffected; what changed is what the library says about degenerate ones.
 
 ### Added
 - **Generic `Scalar<T>` support.** `Range<T>` and `RangeMap<T, P, R>` now work over
@@ -87,7 +125,9 @@ being closed off. Everything else is additive or tooling.
 
 ### Fixed
 - **`encloses`, `isConnected`, `intersection` and `span` now compare *cuts*, not
-  containment.** They were written with `contains`, which answers a question about
+  containment.** *(Cross-listed under **Breaking** above: the old answers were
+  wrong, but they were observable, and one of them was a `null` that consumers
+  may be branching on.)* They were written with `contains`, which answers a question about
   the whole range — so for an EMPTY range it comes back false at both ends for
   reasons that have nothing to do with the bound under test, and a range that
   plainly contains the empty one reported that it did not. The four methods are
