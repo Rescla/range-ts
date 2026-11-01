@@ -1,0 +1,8 @@
+{
+  "spec_dir": "dist/spec-node",
+  "spec_files": ["**/*.spec.js"],
+  "helpers": [],
+  "requires": ["./spec/jsdom-setup.cjs"],
+  "random": false,
+  "stopSpecOnExpectationFailure": false
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "packageManager": "npm",
+  "_comment": [
+    "Mutation testing runs against dist/spec-node (CommonJS, executed by Jasmine in",
+    "plain Node) rather than through Karma/Chrome. Two reasons: the Chrome path made",
+    "every mutant depend on a browser launch, and the command runner cannot",
+    "recompile TypeScript between mutants. Mutating the compiled CJS keeps the",
+    "semantics identical (Stryker mutates comparison operators, boundaries and",
+    "booleans the same way) while each test run costs ~30ms instead of seconds.",
+    "Rebuild with `npm run compile:spec-node` before running, so the mutants are",
+    "cut against current source."
+  ],
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "npx --no-install jasmine --config=jasmine.node.json"
+  },
+  "coverageAnalysis": "off",
+  "ignorePatterns": ["!dist/**"],
+  "symlinkNodeModules": true,
+  "mutate": [
+    "dist/spec-node/core/scalars.js",
+    "dist/spec-node/range/range.js",
+    "dist/spec-node/range-map/range-map.js",
+    "!dist/spec-node/**/*.spec.js"
+  ],
+  "reporters": ["clear-text", "progress", "html"],
+  "timeoutMS": 60000,
+  "concurrency": 4,
+  "thresholds": {
+    "high": 85,
+    "low": 70,
+    "break": 55
+  }
+}

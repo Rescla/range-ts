@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es2020",
+    "outDir": "../dist/spec-node",
+    "noEmit": false,
+    "sourceMap": true,
+    "types": ["jasmine", "node"]
+  },
+  "include": ["./**/*.spec.ts"],
+  "exclude": ["test.ts"]
+}

@@ -1,26 +1,41 @@
 import { BoundType } from "../core/bound-type";
 import { Comparable } from "../core/comparable";
+import { comparableScalar } from "../core/scalars";
+import { Range } from "../range/range";
 
 /**
- * A range (or "interval") defines the boundaries around a contiguous span of values of comparables.
- * Note that it is not possible to iterate over these contained values.
+ * A range over `Comparable` endpoints — the historical, JS-number-backed entry
+ * point. Ordering is decided by `valueOf()`, so `Date` and plain `number`
+ * endpoints mix freely and no conversion is ever performed on them.
  *
- * Based off of https://guava.dev/releases/19.0/api/docs/com/google/common/collect/Range.html#intersection(com.google.common.collect.Range)
+ * This is now a thin instantiation of the generic `Range<T>` with
+ * `comparableScalar`; the range algebra lives in one place. The public shape is
+ * unchanged: the same statics, the same return types, the same `toString()`
+ * output.
+ *
+ * PRECISION: `valueOf()` yields a JS `number`, so this class inherits the
+ * double's 2^53 limit. If your ids exceed `Number.MAX_SAFE_INTEGER`, do not
+ * stretch this class — build a `Range<T>` over a scalar that compares in your
+ * own representation (`defineRange(bigintScalar)`, or your own `Scalar<T>`).
+ *
+ * Based off of https://guava.dev/releases/19.0/api/docs/com/google/common/collect/Range.html
  */
-export class NumberRange {
+export class NumberRange extends Range<Comparable> {
   constructor(
     public lowerEndpoint: Comparable,
     public lowerBoundType: BoundType,
     public upperEndpoint: Comparable,
     public upperBoundType: BoundType
-  ) {}
+  ) {
+    super(lowerEndpoint, lowerBoundType, upperEndpoint, upperBoundType, comparableScalar);
+  }
 
   get lowerEndpointValue(): number {
     return this.lowerEndpoint?.valueOf();
   }
 
   get upperEndpointValue(): number {
-    return this.upperEndpoint?.valueOf()
+    return this.upperEndpoint?.valueOf();
   }
 
   /**
@@ -67,239 +82,44 @@ export class NumberRange {
    * Returns a range that contains all values greater than or equal to endpoint.
    */
   static atLeast(endpoint: Comparable): NumberRange {
-    return new NumberRange(
-      endpoint,
-      BoundType.CLOSED,
-      Number.POSITIVE_INFINITY,
-      BoundType.OPEN
-    );
+    return new NumberRange(endpoint, BoundType.CLOSED, Number.POSITIVE_INFINITY, BoundType.OPEN);
   }
 
   /**
    * Returns a range that contains all values less than or equal to endpoint.
    */
   static atMost(endpoint: Comparable): NumberRange {
-    return new NumberRange(
-      Number.NEGATIVE_INFINITY,
-      BoundType.OPEN,
-      endpoint,
-      BoundType.CLOSED
-    );
+    return new NumberRange(Number.NEGATIVE_INFINITY, BoundType.OPEN, endpoint, BoundType.CLOSED);
   }
 
   /**
    * Returns a range from the given endpoint, which may be either inclusive (closed) or exclusive (open), with no upper bound.
    */
   static downTo(endpoint: Comparable, boundType: BoundType): NumberRange {
-    return new NumberRange(
-      endpoint,
-      boundType,
-      Number.POSITIVE_INFINITY,
-      BoundType.OPEN
-    );
+    return new NumberRange(endpoint, boundType, Number.POSITIVE_INFINITY, BoundType.OPEN);
   }
 
   /**
    * Returns a range with no lower bound up to the given endpoint, which may be either inclusive (closed) or exclusive (open).
    */
   static upTo(endpoint: Comparable, boundType: BoundType): NumberRange {
-    return new NumberRange(
-      Number.NEGATIVE_INFINITY,
-      BoundType.OPEN,
-      endpoint,
-      boundType
-    );
+    return new NumberRange(Number.NEGATIVE_INFINITY, BoundType.OPEN, endpoint, boundType);
   }
 
   /**
-   * Returns true if value is within the bounds of this range.
+   * Narrowed return types so the historical `NumberRange`-typed API is preserved
+   * rather than widened to `Range<Comparable>` at every call site.
    */
-  contains(comparable: Comparable): boolean {
-    const value = comparable?.valueOf();
-    const aboveLowerEndpoint =
-      this.lowerBoundType === BoundType.OPEN
-        ? this.lowerEndpointValue < value
-        : this.lowerEndpointValue <= value;
-    const belowUpperEndpoint =
-      this.upperBoundType === BoundType.OPEN
-        ? this.upperEndpointValue > value
-        : this.upperEndpointValue >= value;
-    return aboveLowerEndpoint && belowUpperEndpoint;
+  intersection(other: NumberRange | Range<Comparable>): NumberRange | null {
+    const r = super.intersection(other);
+    return r === null
+      ? null
+      : new NumberRange(r.lowerEndpoint, r.lowerBoundType, r.upperEndpoint, r.upperBoundType);
   }
 
-  /**
-   * Returns true if the bounds of other do not extend outside the bounds of this range.
-   */
-  encloses(other: NumberRange): boolean {
-    const lowerEndpointEnclosed =
-      other.lowerBoundType === BoundType.OPEN
-        ? this.contains(other.lowerEndpoint) ||
-          this.lowerEndpointValue === other.lowerEndpointValue
-        : this.contains(other.lowerEndpoint);
-    const upperEndpointEnclosed =
-      other.upperBoundType === BoundType.OPEN
-        ? this.contains(other.upperEndpoint) ||
-          this.upperEndpointValue === other.upperEndpointValue
-        : this.contains(other.upperEndpoint);
-    return lowerEndpointEnclosed && upperEndpointEnclosed;
-  }
-
-  /**
-   * Returns true if the ranges overlap in any way
-   */
-  overlaps(other: NumberRange): boolean {
-    const intersection = this.intersection(other);
-    return (intersection && !intersection.isEmpty()) ?? false;
-  }
-
-  /**
-   * Returns the maximal range enclosed by both this range and connectedRange, if such a range exists.
-   */
-  intersection(other: NumberRange): NumberRange | null {
-    if (!this.isConnected(other)) {
-      return null;
-    }
-
-    // Determine inner ranges
-    const lowerRange = this.lowerEndpointValue <= other.lowerEndpointValue ? other : this;
-    const upperRange = this.upperEndpointValue >= other.upperEndpointValue ? other : this;
-
-    // Determine bound types
-    let lowerBoundType;
-    let upperBoundType;
-
-    if (this.lowerEndpointValue === other.lowerEndpointValue) {
-      lowerBoundType =
-        this.lowerBoundType === BoundType.OPEN ||
-        other.lowerBoundType === BoundType.OPEN
-          ? BoundType.OPEN
-          : BoundType.CLOSED;
-    } else {
-      lowerBoundType = lowerRange.lowerBoundType;
-    }
-
-    if (this.upperEndpointValue === other.upperEndpointValue) {
-      upperBoundType =
-        this.upperBoundType === BoundType.OPEN ||
-        other.upperBoundType === BoundType.OPEN
-          ? BoundType.OPEN
-          : BoundType.CLOSED;
-    } else {
-      upperBoundType = upperRange.upperBoundType;
-    }
-
-    return new NumberRange(
-      lowerRange.lowerEndpoint,
-      lowerBoundType,
-      upperRange.upperEndpoint,
-      upperBoundType
-    );
-  }
-
-  /**
-   * Returns true if there exists a (possibly empty) range which is enclosed by both this range and other.
-   */
-  isConnected(other: NumberRange): boolean {
-    return (
-      this.contains(other.lowerEndpoint) ||
-      this.contains(other.upperEndpoint) ||
-      other.contains(this.lowerEndpoint) ||
-      other.contains(this.upperEndpoint)
-    );
-  }
-
-  /**
-   * Returns true if this range is of the form [v..v) or (v..v].
-   */
-  isEmpty(): boolean {
-    return (
-      this.lowerEndpointValue === this.upperEndpointValue &&
-      (this.lowerBoundType === BoundType.OPEN ||
-        this.upperBoundType === BoundType.OPEN)
-    );
-  }
-
-  /**
-   * Returns the minimal range that encloses both this range and other.
-   */
-  span(other: NumberRange): NumberRange {
-    // Determine outer ranges
-    const lowerRange = this.lowerEndpointValue <= other.lowerEndpointValue ? this : other;
-    const upperRange = this.upperEndpointValue >= other.upperEndpointValue ? this : other;
-
-    // Determine bound types
-    let lowerBoundType;
-    let upperBoundType;
-
-    if (this.lowerEndpointValue === other.lowerEndpointValue) {
-      lowerBoundType =
-        this.lowerBoundType === BoundType.CLOSED ||
-        other.lowerBoundType === BoundType.CLOSED
-          ? BoundType.CLOSED
-          : BoundType.OPEN;
-    } else {
-      lowerBoundType = lowerRange.lowerBoundType;
-    }
-
-    if (this.upperEndpointValue === other.upperEndpointValue) {
-      upperBoundType =
-        this.upperBoundType === BoundType.CLOSED ||
-        other.upperBoundType === BoundType.CLOSED
-          ? BoundType.CLOSED
-          : BoundType.OPEN;
-    } else {
-      upperBoundType = upperRange.upperBoundType;
-    }
-
-    return new NumberRange(
-      lowerRange.lowerEndpoint,
-      lowerBoundType,
-      upperRange.upperEndpoint,
-      upperBoundType
-    );
-  }
-
-  /**
-   * Returns a string representation of this range, such as "[3..5)". See tests, class docs or guava RangeMap docs for more examples.
-   */
-  toString(): string {
-    const getLowerBoundCharacter = () => {
-      switch (this.lowerBoundType) {
-        case BoundType.OPEN:
-          return "(";
-        case BoundType.CLOSED:
-          return "[";
-      }
-    };
-
-    const getUpperBoundCharacter = () => {
-      switch (this.upperBoundType) {
-        case BoundType.OPEN:
-          return ")";
-        case BoundType.CLOSED:
-          return "]";
-      }
-    };
-
-    const valueToString = (value: Comparable) => {
-      switch (value.valueOf()) {
-        case Number.POSITIVE_INFINITY:
-          return "+∞";
-        case Number.NEGATIVE_INFINITY:
-          return "-∞";
-        default:
-          // @ts-ignore
-          if(value['toISOString']) {
-            // @ts-ignore
-            return value.toISOString();
-          }
-
-          return value.valueOf();
-      }
-    };
-
-    return `${getLowerBoundCharacter()}${valueToString(
-      this.lowerEndpoint
-    )}..${valueToString(this.upperEndpoint)}${getUpperBoundCharacter()}`;
+  /** Narrowed return type; see `intersection`. */
+  span(other: NumberRange | Range<Comparable>): NumberRange {
+    const r = super.span(other);
+    return new NumberRange(r.lowerEndpoint, r.lowerBoundType, r.upperEndpoint, r.upperBoundType);
   }
 }

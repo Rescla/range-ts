@@ -44,6 +44,19 @@ testem.log
 /typings
 debug.log
 
+# mutation testing (Stryker)
+# .stryker-tmp holds the sandboxes each mutant run in; reports/ holds the HTML
+# mutation report. Both are regenerated per run and must never be committed.
+# NOTE: /dist is ignored above, which is why stryker.conf.json needs
+# "ignorePatterns": ["!dist/**"] — the command runner tests the compiled
+# spec-node output, so Stryker has to be told to copy it into the sandbox.
+/.stryker-tmp
+/reports
+
+# incremental build artifacts (tsc -b); regenerated, never reviewed
+tsconfig.tsbuildinfo
+/.tsbuildinfo
+
 # System Files
 .DS_Store
 Thumbs.db
