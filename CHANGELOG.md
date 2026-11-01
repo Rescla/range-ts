@@ -44,8 +44,9 @@ relied on the old permissiveness — full rationale under **Security**.
   constructor and both prototypes are frozen, so a range cannot be mutated after
   it is built. **Check this** if you subclass `Range` and assign your own instance
   fields after `super()` — that now throws. Use prototype members, or pass
-  everything through the constructor. Consumers who only *read* ranges are
-  unaffected. Full rationale under **Security**.
+  everything through the constructor. TypeScript consumers who write to a field
+  get `TS2540` at compile time; plain-JS consumers in sloppy mode get a **silent
+  no-op** — the write neither throws nor lands. Full rationale under **Security**.
 
 - **`comparableScalar` no longer orders non-numeric operands.** It returns `NaN`
   (unordered) instead of coercing, because `<` / `>` coerce differently by type
@@ -134,62 +135,26 @@ relied on the old permissiveness — full rationale under **Security**.
 
 ### Security
 
-A full audit of this tree found **no remotely triggerable vulnerability and no
-prototype-pollution path**. What it found was six ways to break an invariant the
-library asserts about itself — each producing a silently wrong answer rather
-than an error. All six are fixed and pinned by tests.
+A full audit found **no remotely triggerable vulnerability and no
+prototype-pollution path** (re-tested by driving `JSON.parse('{"__proto__":…}')`
+through `put`/`get`/`asMapOfRanges`/`asMapOfValues`/`subRangeMap`). It found
+six ways to break an invariant the library asserts about itself, each producing
+a silently wrong answer rather than an error. All six fixed and pinned by tests;
+full reasoning in [docs/1.0.0-notes.md](docs/1.0.0-notes.md).
 
-- **`Range` instances are frozen.** Every guarantee the constructor makes —
-  bound types valid, endpoints not inverted, the scalar that ordered them — is
-  undone by a field written afterwards, and `readonly` is compile-time only.
-  Before: `NumberRange.closed(1, 10)` then `r.lowerEndpoint = 99` gave
-  `[99..10]` with `isEmpty() === false`, the inverted-but-not-empty state the
-  constructor itself refuses to build. Ranges are stored by reference and
-  handed back by `getEntry` / `asMapOfRanges`, so a consumer mutating what it
-  read corrupted the disjointness invariant `span` and `subRangeMap` rely on.
-  Now `Object.freeze(this)` runs last in the constructor, the fields are
-  `readonly`, and `Range.prototype` / `NumberRange.prototype` are frozen so
-  `contains` cannot be rewritten process-wide.
-  **Breaking** for subclasses that assign their own instance fields after
-  `super()` — use prototype members, or pass everything through the `Range`
-  constructor.
-- **`comparableScalar` no longer orders non-numeric operands.** `<` / `>`
-  coerce, and coerce *differently by type pair*: two strings compared
-  lexicographically, a number against a string compared numerically. The
-  comparator answered the same question differently depending on runtime type —
-  `compare("9","10") = 1` while `compare(9,"10") = -1`. A comparator must be
-  consistent: `intersection` / `span` merge bound types on `compare() === 0`
-  and every sorted structure assumes the ordering holds. Non-numeric primitives
-  now return `NaN` (unordered). bigint still orders against number, including
-  past 2^53, because JS defines that ordering exactly. **Breaking** if you were
-  relying on string coercion.
-- **Bound types are validated at construction.** Every consumer asks
-  `x === BoundType.OPEN ? … : …`, so any value that is not exactly `OPEN` is
-  read as `CLOSED` — the permissive member, which *includes* the endpoint. A
-  TypeScript enum erases, so nothing checked a value arriving from JSON or a
-  cast. Before: `new Range(1, "OPENN", 5, CLOSED, …)` constructed, `contains(1)`
-  was `true`, and `toString()` rendered `[1..5]` so the log agreed with the
-  wrong answer. `assertBoundType` now throws on anything but the two members,
-  at the single choke point every `Range` passes through.
-- **`likeRange` will not call a non-`Range` constructor.** It reflected
-  `proto.constructor` and invoked it with four arguments the library had
-  computed. Now bounded to `Range` and its subclasses.
-- **`get` / `getEntry` are O(log n).** They were a linear `find` over the
-  insertion-order array — ~500 µs per lookup at 10k entries, on the hot path of
-  every consumer. Now a binary search over a lazily built, write-invalidated
-  sorted view (~1–2 µs). The comparison is cut-aware: "last entry whose lower
-  endpoint does not exceed the key" is the wrong rule with a value-only `<=`, and
-  that first version failed the existing open-boundary tests. Ties on lower
-  value break CLOSED-first, matching cut algebra.
-- **CI token permissions made explicit.** `main.yml` and `codeql-analysis.yml`
-  carried no `permissions:` key, so both inherited the repository default —
-  historically "Read and write" — for jobs that write nothing.
-
-Deliberately **not** changed, with reasons: `subRangeMap` returns values by
-reference (documented — the map owns value identity, and copying would break
-`putCoalescing`'s `eq`); `toString()` is a sink, not a sanitizer (documented);
-the `Math.random()` sentinel in `remove()` compares by reference, so the random
-id is decoration (commented as such).
+- **`Range` instances are frozen** — constructor guarantees can no longer be
+  undone by a later field write. (Breaking; see above.)
+- **`comparableScalar` returns `NaN` for non-numeric operands** — `<`/`>` coerce
+  differently by type pair, so the comparator was inconsistent. (Breaking; see
+  above.)
+- **Bound types validated at construction** — anything not exactly `OPEN`/`CLOSED`
+  used to be read as `CLOSED`, the permissive member. (Breaking; see above.)
+- **`likeRange` will not call a non-`Range` constructor** — it reflected
+  `proto.constructor` and invoked it with library-computed arguments.
+- **`get` / `getEntry` are O(log n)** — were a linear `find` over the
+  insertion-order array (~400 us per lookup at 10k entries; now ~0.2 us).
+- **CI token permissions made explicit** — `main.yml` and `codeql-analysis.yml`
+  had no `permissions:` key and inherited the repo default.
 
 ### Quality
 
