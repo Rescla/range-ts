@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - Unreleased
+## [1.0.0] - 2026-11-01
 
 First major release. The breaking change is the end of ES5 output; everything else
 is additive or tooling.
@@ -62,6 +62,21 @@ is additive or tooling.
   survivors are `__esModule` boilerplate, the rest equivalent mutants or
   defensive paths).
 - 174 specs passing across node, jsdom and Chrome.
+- **Published artifact verified against 0.1.8 by installing the packed tarball
+  into clean consumer projects**, not by inspecting the build directory:
+  - `main` (`dist/cjs`) and `types` (`dist/types`) unchanged; `module` moved
+    `dist/esm5` → `dist/esm` (the intended breaking change).
+  - CJS `require` smoke test: identical results to 0.1.8 across `RangeMap.get`,
+    `contains`, and `toString` rendering (`[1..5]`, `[0..+∞)`, `(-∞..+∞)`).
+  - Node ESM `import` and dynamic `import()` both resolve and work.
+  - `dist/esm` contains no CJS markers; `dist/cjs` is proper CJS.
+  - **Backwards compatibility confirmed at the type level**: the 0.1.8 usage
+    pattern `new RangeMap<string>()` + `NumberRange.closedOpen(...)` typechecks
+    clean against 1.0.0 under `strict` with `skipLibCheck: false`.
+  - The new exact-domain path works in the shipped artifact: a `bigint` range
+    correctly distinguishes `2^53 + 1` from `2^53`, which a JS `number`
+    cannot. This is the feature's whole reason to exist and it was verified
+    running, not just typed.
 
 ## [0.1.7] - 2022-09-16
 https://github.com/Rescla/range-ts/releases/tag/v0.1.7
