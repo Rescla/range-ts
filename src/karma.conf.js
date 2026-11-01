@@ -1,6 +1,50 @@
 // Karma configuration file, see link for more information
 // https://karma-runner.github.io/1.0/config/configuration-file.html
 
+const fs = require("fs");
+const path = require("path");
+
+/**
+ * Resolve a Chrome/Chromium binary from PATH so `npm test` does not die with
+ * "No binary for ChromeHeadless browser on your platform" merely because the
+ * invoking shell had no CHROME_BIN exported. If the browser is installed at all
+ * it is normally on PATH, so this works however it was installed and assumes
+ * nothing about the OS or package manager.
+ *
+ * An explicitly exported CHROME_BIN always wins and is never overridden, so a
+ * machine pinned to a specific build keeps that pin. If nothing is found we
+ * leave CHROME_BIN untouched so karma-chrome-launcher's own detection (which
+ * knows about macOS .app bundles) still gets its turn.
+ */
+function resolveChromeBin() {
+  const fromEnv = process.env.CHROME_BIN;
+  if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
+
+  const names = [
+    "google-chrome-stable",
+    "google-chrome",
+    "chromium",
+    "chromium-browser",
+  ];
+  const dirs = (process.env.PATH || "").split(path.delimiter).filter(Boolean);
+  for (const dir of dirs) {
+    for (const name of names) {
+      const candidate = path.join(dir, name);
+      try {
+        fs.accessSync(candidate, fs.constants.X_OK);
+      } catch {
+        continue;
+      }
+      process.env.CHROME_BIN = candidate;
+      return candidate;
+    }
+  }
+
+  return fromEnv;
+}
+
+resolveChromeBin();
+
 module.exports = function (config) {
   config.set({
     basePath: "../dist/karma",

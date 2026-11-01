@@ -211,10 +211,16 @@ export class RangeMap<T, P = any> {
     );
   }
 
+  /**
+   * Both callers pass the flag explicitly, so it deliberately has no default:
+   * a default here is a value no call site can exercise, and Stryker correctly
+   * flagged that a flipped default changed nothing. `put` and `putCoalescing`
+   * are the public surface; this stays an internal, fully-specified helper.
+   */
   private combinedPut(
     range: Range<P>,
     value: T,
-    shouldPutCoalescing: boolean = false
+    shouldPutCoalescing: boolean
   ): void {
     let newRange: Range<P> = range;
     let affectedRangeValues: RangeValue<T, P>[] = [];
