@@ -78,7 +78,7 @@ being closed off. Everything else is additive or tooling.
 
 ### Changed
 - TypeScript 5 → 7; `cjs`/`esm`/`karma` targets `es5`/`es2015` → `es2020`.
-- CI pins Node 22 via `actions/setup-node`, so the lockfile no longer depends on
+- CI pins Node 26 via `actions/setup-node`, so the lockfile no longer depends on
   whichever npm the runner happens to ship. Actions bumped: `checkout` v2 → v7,
   `setup-node` → v7, CodeQL v1 → v4.
 - `test:chrome` now compiles its own target and refuses to report success over a
@@ -86,6 +86,53 @@ being closed off. Everything else is additive or tooling.
   `TOTAL: 0 SUCCESS`).
 
 ### Fixed
+- **`encloses`, `isConnected`, `intersection` and `span` now compare *cuts*, not
+  containment.** They were written with `contains`, which answers a question about
+  the whole range — so for an EMPTY range it comes back false at both ends for
+  reasons that have nothing to do with the bound under test, and a range that
+  plainly contains the empty one reported that it did not. The four methods are
+  now decided on Guava's `Cut` ordering, where a bound's position depends on both
+  its open/closed type and whether it is a lower or an upper bound
+  (lower `CLOSED(v)`→`(v,0)`, lower `OPEN(v)`→`(v,1)`, upper `CLOSED(v)`→`(v,1)`,
+  upper `OPEN(v)`→`(v,0)`). Concretely:
+  - `[3..6]` now encloses the empty `[4..4)` (it always should have; Guava's own
+    javadoc lists this case).
+  - `(3..6]` still does *not* enclose `[3..6]` — an open lower cut sits above a
+    closed one, which `contains` could not express either way.
+  - `[0..2)` is now connected to the empty `[2..2)`, and their intersection is
+    that empty range rather than `null`. `null` means "not connected", which is a
+    different fact from "connected with no overlap".
+  Verified against a reference implementation of Guava's `Cut` model over all
+  1296 ordered range pairs (values 0..3, all four bound-type combinations,
+  empties included): 0 divergences on all five methods.
+- **Writing an empty range into a `RangeMap` no longer moves the span of a range
+  no listing shows.** The entry was stored, and `asMapOfRanges` /
+  `asMapOfValues` filtered it out while `span` did not — so `put([0..1), 'a')`
+  followed by `put([100..100), 'b')` reported a span of `[0..100)` for a map
+  that visibly held one entry. Fixed at the write side (`combinedPut` now no-ops
+  on an empty range, matching Guava and matching what `remove` already did), so
+  no reader has to remember to filter and no future reader inherits the trap.
+  `remove(empty)` is likewise a no-op that strands nothing.
+- **`subRangeMap` no longer drops the parent's equality function.** It built the
+  submap with `new RangeMap()`, so `putCoalescing` on a submap decided "same
+  value" by `===` while the map it came from used whatever the owner supplied.
+  The README's own shape — a `RangeMap<string[]>` built with lodash `isEqual` and
+  written back through `subRangeMap` — coalesced correctly on the parent and
+  silently stopped coalescing as soon as the write went through a submap. `eq`
+  is now forwarded on every construction path, including the empty-submap path.
+- **Comparing ranges built over different scalars now throws instead of returning
+  a wrong answer dressed as a negative one.** `comparableScalar.compare(10, 10n)`
+  is `NaN`, so `NumberRange.closed(0, 10).contains(10n)` was `false` and the
+  same propagation made a `bigint` endpoint read as outside a range whose own
+  endpoint it equals. Where two ranges' scalars are different objects *and* the
+  comparison comes back unordered, `encloses` / `isConnected` / `intersection` /
+  `span` now throw with instructions to build both ranges from the same scalar.
+  The guard is deliberately narrow: it fires on the unordered result only, so a
+  same-scalar `NaN` (a documented non-answer) still propagates as `false`, and
+  two scalars that *do* order the values still compare normally. Note that the
+  typed API already refuses most of these calls at compile time — `bigint` does
+  not satisfy `Comparable` — so this guard is defence for plain-JS consumers and
+  `any`-cast call sites rather than the primary barrier.
 - **`tsconfig.*.tsbuildinfo` no longer ships.** Three of them were in the tarball
   (they were in 0.1.8 too). They are incremental-compiler state that a consumer
   cannot use, and they must stay on disk for `tsc -b` to be incremental, so they
@@ -140,11 +187,44 @@ being closed off. Everything else is additive or tooling.
   `NaN` for values like `NaN` rather than picking a direction or returning 0.
   This matches what `comparableScalar` already did and what 0.1.8 behaved as,
   but the interface previously promised a strict trichotomy it did not keep.
-- Mutation score 78.9% → 94.9% (483 killed, 1 timeout, 26 surviving; 9 of the
-  survivors are `__esModule` boilerplate, the rest equivalent mutants or
-  defensive paths). Re-run after the `RangeMap` typing fix landed: 94.90%,
-  483 killed / 1 timeout / 26 survived — unchanged.
-- 174 specs passing across node, jsdom and Chrome.
+- Mutation score 78.9% → 94.9% → **93.71%** (455 killed, 7 timeout, 31 survived
+  of 493). The dip from 94.9% is the cut-order rewrite adding code, not tests
+  getting weaker; the survivors are classified below rather than left as a
+  residue.
+- **All 31 remaining survivors are accounted for**, and none is a gap:
+  - 9 are `__esModule` / `"use strict"` boilerplate on line 2 of each compiled
+    file — not library logic.
+  - 4 (`intersection`/`span` `>=`→`>` and `<=`→`<` at an exactly-equal cut) are
+    **provably equivalent**: `lowerSide`/`upperSide` are injective, so equal
+    cut-sides imply equal bound types, and picking `other` where the cuts tie
+    yields an identical bound.
+  - 1 (`if (!s.succ)` → `false`) is absorbed by the `try`/`catch` in `step`,
+    which turns the missing-`succ` `TypeError` into `null` and so into the same
+    `false` answer.
+  - 1 (`const toDelete = { toDeleteId: Math.random() }` → `{}`) is equivalent:
+    `remove` compares by object identity, and the field is decorative.
+  - 3 (`combinedPut`'s empty-range guard, and the `intersection(...)?.isEmpty()`
+    guard) survive because the invariant is enforced twice over. `fromRangeValues`
+    is `private static`, so with the write-side guard no empty range can enter
+    `rangeValues` through any public path; disabling either brace alone still
+    leaves the other holding. Kept deliberately — the write-side guard is the one
+    that stops the bad state from ever existing.
+  - 13 are the read-side empty filters in `asMapOfRanges` / `asMapOfValues` /
+    `span` and their `.filter()` chains, redundant for the same reason. They are
+    cheap defence-in-depth against a future write path that forgets the guard.
+  - 3 are error-message fragments in the new cross-scalar `throw` (control flow
+    is unchanged; only the prose differs).
+- **Two survivors that were *not* equivalent are now killed.** Removing the
+  `nxt !== null` guard in `isAdjacentTo` was uncaught until the zero-endpoint
+  case was tested: `bigintScalar.compare(null, 0n)` returns `0` — "equal" —
+  because `null` is neither infinity and neither ordering comparison holds, so a
+  failed `succ` against a range with a `0` lower endpoint became a **false
+  positive adjacency**. The existing test used a `5` endpoint, where
+  `compare(null, 5n)` is `-1` and the answer happens to stay correct. All 14
+  mutants on those two lines now die, including the null-guard removal.
+- 207 specs passing across node, jsdom and Chrome (was 174; +33 for cut order,
+  empty-range `RangeMap` semantics, the cross-scalar guard, the throwing-`succ`
+  cases and the sentinel pins).
 - **Published artifact verified against 0.1.8 by installing the packed tarball
   into clean consumer projects**, not by inspecting the build directory:
   - `main` (`dist/cjs`) and `types` (`dist/types`) unchanged; `module` moved

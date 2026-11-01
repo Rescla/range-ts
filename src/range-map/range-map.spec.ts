@@ -444,3 +444,124 @@ describe("README example", () => {
     ]);
   });
 });
+
+/**
+ * `subRangeMap` must carry the parent's equality function.
+ *
+ * It used to build the submap with `new RangeMap()` and drop `eq` on the floor,
+ * so `putCoalescing` on a submap decided "same value" by `===` while the map it
+ * came from used whatever the owner supplied. That makes the README's own shape
+ * — a `RangeMap<string[]>` built with lodash `isEqual`, read back through
+ * `subRangeMap` — coalesce correctly on the parent and silently stop coalescing
+ * the moment the write goes through a submap.
+ */
+describe("subRangeMap carries the parent's equality function", () => {
+  const byKey = (a: { k: string }, b: { k: string }) => a.k === b.k;
+
+  it("coalesces on the submap by the parent's rule, not by object identity", () => {
+    const parent = new RangeMap<{ k: string }>(byKey);
+    parent.putCoalescing(NumberRange.closedOpen(0, 10), { k: "x" });
+
+    const sub = parent.subRangeMap(NumberRange.closedOpen(2, 8));
+    sub.putCoalescing(NumberRange.closedOpen(7, 12), { k: "x" });
+
+    // Connected AND equal by byKey, so the two merge.
+    expect(sub.asMapOfRanges().size).toBe(1);
+    expect([...sub.asMapOfRanges().keys()][0].toString()).toBe("[2..12)");
+  });
+
+  it("control: the same write on a default-equality map splits instead, so the test above is about eq", () => {
+    const parent = new RangeMap<{ k: string }>();
+    parent.putCoalescing(NumberRange.closedOpen(0, 10), { k: "x" });
+
+    const sub = parent.subRangeMap(NumberRange.closedOpen(2, 8));
+    sub.putCoalescing(NumberRange.closedOpen(7, 12), { k: "x" });
+
+    // Same ranges, same-looking values — but `===` says they differ, so nothing
+    // coalesces and the existing entry is split around the new one instead.
+    expect(sub.asMapOfRanges().size).toBe(2);
+    expect([...sub.asMapOfRanges().keys()].map(String)).toEqual(["[2..7)", "[7..12)"]);
+  });
+
+  it("carries eq through the empty-submap path too", () => {
+    const parent = new RangeMap<{ k: string }>(byKey);
+    parent.putCoalescing(NumberRange.closedOpen(0, 10), { k: "x" });
+
+    const sub = parent.subRangeMap(NumberRange.closedOpen(4, 4));
+    expect(sub.asMapOfRanges().size).toBe(0);
+
+    sub.putCoalescing(NumberRange.closedOpen(9, 12), { k: "x" });
+    sub.putCoalescing(NumberRange.closedOpen(11, 15), { k: "x" });
+    expect(sub.asMapOfRanges().size).toBe(1);
+  });
+});
+
+/**
+ * An empty range associates a value with nothing, so writing one is a no-op.
+ *
+ * Before the write-side guard in `combinedPut`, the entry was stored — and then
+ * `asMapOfRanges` and `asMapOfValues` filtered it out while `span` did not. The
+ * result was a range that was invisible in every listing of the map but still
+ * moved the span, so a map that visibly held one entry could report a span of
+ * `[0..100)`. Fixing it at the write side means no reader has to remember to
+ * filter, and no future reader inherits the same trap.
+ */
+describe("an empty range associates nothing", () => {
+  it("put leaves a populated map completely untouched", () => {
+    const m = new RangeMap<string>();
+    m.put(NumberRange.closedOpen(0, 1), "a");
+    m.put(NumberRange.closedOpen(100, 100), "ghost");
+
+    expect(m.asMapOfRanges().size).toBe(1);
+    expect(m.span()!.toString()).toBe("[0..1)");
+    expect(m.get(100)).toBeNull();
+    expect(m.getEntry(100)).toBeNull();
+  });
+
+  it("does not stretch the span to the empty range's endpoints", () => {
+    const m = new RangeMap<string>();
+    m.put(NumberRange.closedOpen(0, 1), "a");
+    m.put(NumberRange.closedOpen(100, 100), "b");
+
+    // The old answer: [0..100), from an entry no listing of the map shows.
+    expect(m.span()!.toString()).toBe("[0..1)");
+  });
+
+  it("keeps the span null when the map is otherwise empty", () => {
+    const m = new RangeMap<string>();
+    m.putCoalescing(NumberRange.closedOpen(5, 5), "ghost");
+
+    expect(m.span()).toBeNull();
+    expect(m.asMapOfRanges().size).toBe(0);
+    expect(m.asMapOfValues().size).toBe(0);
+  });
+
+  it("remove of an empty range is a no-op that strands nothing", () => {
+    const m = new RangeMap<string>();
+    m.put(NumberRange.closedOpen(0, 10), "a");
+    m.remove(NumberRange.closedOpen(5, 5));
+
+    expect(m.asMapOfRanges().size).toBe(1);
+    expect(m.get(5)).toBe("a");
+    expect(m.span()!.toString()).toBe("[0..10)");
+  });
+
+  it("subRangeMap over an empty range yields an empty map, not a whole one", () => {
+    const m = new RangeMap<string>();
+    m.put(NumberRange.closedOpen(0, 10), "a");
+
+    const sub = m.subRangeMap(NumberRange.closedOpen(4, 4));
+    expect(sub.asMapOfRanges().size).toBe(0);
+    expect(sub.span()).toBeNull();
+  });
+
+  it("subRangeMap drops intersections that came out empty", () => {
+    // [0..5) and [5..10) are connected but share no point; the intersection is
+    // the empty [5..5) and must not become an entry in the submap.
+    const m = new RangeMap<string>();
+    m.put(NumberRange.closedOpen(0, 5), "a");
+
+    const sub = m.subRangeMap(NumberRange.closedOpen(5, 10));
+    expect(sub.asMapOfRanges().size).toBe(0);
+  });
+});

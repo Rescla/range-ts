@@ -92,6 +92,28 @@ function likeRange<P, R extends Range<P>>(
  *         widening that return broke them at compile time while the runtime
  *         instance was still a NumberRange.
  *
+ * KNOWN TYPE HOLE IN `R` (deliberate, and unfixable without a redesign)
+ * ------------------------------------------------------------------
+ * `R` is constrained to `Range<any>`, not `Range<P>`, so nothing stops you
+ * writing `new RangeMap<string, bigint, NumberRange>()` — a map whose declared
+ * point domain and range class disagree. It cannot be tightened: the default
+ * `DefaultRange<P>` is a conditional type whose true branch is `NumberRange`, i.e.
+ * `Range<Comparable>`, and `Comparable` is not assignable to an arbitrary
+ * `P extends Comparable`, so `DefaultRange<P> extends Range<P>` is not provable
+ * for unresolved `P` (TS2344: "'P' could be instantiated with an arbitrary type
+ * which could be unrelated to 'Comparable'"). Making it provable means deriving
+ * the point type FROM the range type instead of taking both, which changes the
+ * three-parameter signature the 1.0.0 notes advertise for back-compat.
+ *
+ * In practice the dangerous direction is already blocked: `bigint` does not
+ * satisfy `Comparable` (its `valueOf()` returns `bigint`, not `number`), so you
+ * cannot put a `bigint` into a `NumberRange` through the typed API. What the hole
+ * does allow is mixing two *scalar* domains via an explicit `R` or an `any`, and
+ * there the comparison used to come back silently wrong. `Range.compareCuts` now
+ * throws on exactly that case rather than returning a negative that means nothing.
+ * Keep `R`'s point domain consistent with `P`; the compiler cannot check it for
+ * you.
+ *
  * So `new RangeMap<string>()` compiles and behaves exactly as it did in 0.1.8,
  * and an exact-domain map is written by naming the point type:
  *
@@ -171,15 +193,26 @@ export class RangeMap<T, P = Comparable, R extends Range<any> = DefaultRange<P>>
 
   /**
    * Returns a view of the part of this range map that intersects with range.
+   *
+   * The returned map carries this map's equality function. Dropping it was a
+   * bug: `putCoalescing` on a submap decided "same value" by `===` while the
+   * map it came from used whatever the owner supplied, so the exact pattern the
+   * README shows (a `RangeMap<string[]>` built with lodash `isEqual`, read back
+   * through `subRangeMap`) would coalesce correctly on the parent and silently
+   * stop coalescing the moment it went through a submap.
    */
   subRangeMap(range: R): RangeMap<T, P, R> {
+    if (range.isEmpty()) {
+      return RangeMap.fromRangeValues([], this.eq);
+    }
+
     const rangeValues = this.rangeValues.flatMap((rangeValue) => {
       // The intersection is built by the range machinery, which returns the base
       // class; the map's own R is the honest type because every range it holds is
       // an R and `intersection` preserves the receiver's class.
       const intersection = rangeValue.range.intersection(range) as R | null;
 
-      if (!intersection) {
+      if (!intersection || intersection.isEmpty()) {
         return [];
       }
 
@@ -191,7 +224,7 @@ export class RangeMap<T, P = Comparable, R extends Range<any> = DefaultRange<P>>
       ];
     });
 
-    return RangeMap.fromRangeValues(rangeValues);
+    return RangeMap.fromRangeValues(rangeValues, this.eq);
   }
 
   /**
@@ -209,13 +242,24 @@ export class RangeMap<T, P = Comparable, R extends Range<any> = DefaultRange<P>>
 
   /**
    * Returns the minimal range enclosing the ranges in this RangeMap.
+   *
+   * Empty entries are skipped rather than counted. Without that, a single empty
+   * range stranded in the map reports an EMPTY span for a map that has content,
+   * because the empty range's endpoints can win the sort at either end. (With
+   * the write-side guard in `combinedPut` no empty can get in through the
+   * public API; the filter stays as defence against state assembled by other
+   * means, and because `span` should not depend on how the entries arrived.)
    */
   span(): R | null {
-    if (this.rangeValues.length === 0) {
+    const nonEmpty = this.rangeValues.filter(
+      (rangeValue) => !rangeValue.range.isEmpty()
+    );
+
+    if (nonEmpty.length === 0) {
       return null;
     }
 
-    const sortedRangeValues = [...this.rangeValues].sort((a, b) =>
+    const sortedRangeValues = [...nonEmpty].sort((a, b) =>
       compareLower(a.range, b.range)
     );
 
@@ -262,6 +306,18 @@ export class RangeMap<T, P = Comparable, R extends Range<any> = DefaultRange<P>>
     value: T,
     shouldPutCoalescing: boolean
   ): void {
+    // An empty range associates the value with nothing, so writing it is a
+    // no-op — which is what Guava does, and what the rest of this class
+    // already assumes (`remove` guards the same way). Accepting it used to
+    // store the entry, where it was invisible to `asMapOfRanges`/`asMapOfValues`
+    // (both filter empties) but still visible to `span`, so `put([0..1), 'a')`
+    // followed by `put([100..100), 'b')` reported a span of `[0..100)` for a
+    // map that visibly holds one entry. Fixing it at the write side rather
+    // than at each reader, so no future reader inherits the same trap.
+    if (range.isEmpty()) {
+      return;
+    }
+
     let newRange: R = range;
     let affectedRangeValues: RangeValue<T, P, R>[] = [];
     const unaffectedRangeValues: RangeValue<T, P, R>[] = [];

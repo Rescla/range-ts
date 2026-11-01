@@ -2,6 +2,33 @@ import { BoundType } from "../core/bound-type";
 import { Scalar } from "../core/scalar";
 
 /**
+ * Where a bound sits on the line, as a tie-break offset used only when two
+ * endpoint VALUES are equal.
+ *
+ * A bound is not a point. `[3..` admits 3; `(3..` begins just above it. Two
+ * bounds carrying the same value can therefore occupy different positions, and
+ * the position depends on BOTH the open/closed type AND whether the bound is a
+ * lower or an upper one:
+ *
+ *   lower CLOSED(v) -> side 0      lower OPEN(v) -> side 1   (begins above v)
+ *   upper CLOSED(v) -> side 1      upper OPEN(v) -> side 0   (ends below v)
+ *
+ * This is Guava's `Cut` ordering (`belowValue` / `aboveValue`) expressed as a
+ * comparison tie-break instead of as a new value of `T`: the domain's own
+ * `compare` decides the value and the side only ever breaks a tie between equal
+ * values, so nothing here invents a number the consumer could hold, overflow or
+ * fail to order. See `compareCuts`.
+ */
+function lowerSide(boundType: BoundType): number {
+  return boundType === BoundType.OPEN ? 1 : 0;
+}
+
+/** Mirror of `lowerSide` for the upper end — note the polarity is inverted. */
+function upperSide(boundType: BoundType): number {
+  return boundType === BoundType.OPEN ? 0 : 1;
+}
+
+/**
  * A range (or "interval") around a contiguous span of values of some scalar
  * domain `T`, with each side independently open or closed.
  *
@@ -93,20 +120,93 @@ export class Range<T> {
   }
 
   /**
+   * Compare one of this range's bounds against one of `other`'s, in cut order:
+   * by endpoint value first, by the position the bound occupies at that value
+   * second.
+   *
+   * An unordered comparison propagates as `NaN` rather than falling through to
+   * the side tie-break: `NaN !== 0` is true, so the value comparison is what
+   * gets returned and every `<=` / `>=` / `===` at the call sites reads false.
+   * That is the established behaviour for unordered endpoints (see the
+   * `Scalar.compare` contract) and keeps an unordered pair from being resolved by
+   * a bound-type technicality.
+   *
+   * The one case that propagation cannot serve honestly is two ranges built over
+   * DIFFERENT scalars whose comparison comes back unordered. There the caller is
+   * not asking a range question that happens to have a negative answer; it is
+   * asking a question no scalar is answering. Propagating the `NaN` there reads
+   * as "not contained / not connected / no overlap", which is how a `bigint`
+   * endpoint ends up reported as outside a range whose own endpoint it equals
+   * (`comparableScalar.compare(10, 10n)` is `NaN`, so
+   * `NumberRange.closed(0, 10).contains(10n)` is `false`). A wrong answer
+   * wearing the costume of a negative one is the worst possible output, so that
+   * specific case throws.
+   *
+   * Note the guard fires only on the unordered result. Two distinct-but-equivalent
+   * scalar objects that DO order the values compare normally, so nothing that was
+   * previously answering correctly changes.
+   */
+  private compareCuts(
+    other: Range<T>,
+    myValue: T,
+    mySide: number,
+    theirValue: T,
+    theirSide: number
+  ): number {
+    const byValue = this.scalar.compare(myValue, theirValue);
+
+    if (this.scalar !== other.scalar && Number.isNaN(byValue)) {
+      throw new Error(
+        "Range: compared endpoints across two different Scalar implementations " +
+          "and the comparison came back unordered. These ranges were built over " +
+          "different point domains and cannot be intersected, spanned, enclosed " +
+          "or connected. Build both ranges from the same scalar " +
+          "(defineRange(yourScalar)) rather than mixing domains."
+      );
+    }
+
+    // Unordered operands fall through here as NaN, and `NaN !== 0` is true, so
+    // the NaN propagates rather than reaching the side tie-break.
+    return byValue !== 0 ? byValue : mySide - theirSide;
+  }
+
+  /**
    * Returns true if the bounds of other do not extend outside the bounds of this range.
+   *
+   * Compared in cut order, which is what makes the empty cases come out right.
+   * A test built on `contains(other.endpoint)` cannot: `contains` answers a
+   * question about the WHOLE range, so for an empty `other` it is false at both
+   * ends for reasons that have nothing to do with either bound, and a range that
+   * plainly contains the empty range reads as not enclosing it. Guava's own
+   * contract calls this out — `[3..6]` encloses `[4..4)` even though the latter
+   * is empty — and cut order is how it gets there:
+   *
+   *   [3..6]  lower cut (3,0)  upper cut (6,1)
+   *   [4..4)  lower cut (4,0)  upper cut (4,0)   -> 3<=4 and 6>=4 -> enclosed
+   *
+   * Note the converse does NOT hold, also per Guava: `[4..5]` contains every
+   * value that `(3..6)` contains, but does not enclose it.
    */
   encloses(other: Range<T>): boolean {
-    const lowerEndpointEnclosed =
-      other.lowerBoundType === BoundType.OPEN
-        ? this.contains(other.lowerEndpoint) || this.scalar.compare(this.lowerEndpoint, other.lowerEndpoint) === 0
-        : this.contains(other.lowerEndpoint);
+    const lowerOk =
+      this.compareCuts(
+        other,
+        this.lowerEndpoint,
+        lowerSide(this.lowerBoundType),
+        other.lowerEndpoint,
+        lowerSide(other.lowerBoundType)
+      ) <= 0;
 
-    const upperEndpointEnclosed =
-      other.upperBoundType === BoundType.OPEN
-        ? this.contains(other.upperEndpoint) || this.scalar.compare(this.upperEndpoint, other.upperEndpoint) === 0
-        : this.contains(other.upperEndpoint);
+    const upperOk =
+      this.compareCuts(
+        other,
+        this.upperEndpoint,
+        upperSide(this.upperBoundType),
+        other.upperEndpoint,
+        upperSide(other.upperBoundType)
+      ) >= 0;
 
-    return lowerEndpointEnclosed && upperEndpointEnclosed;
+    return lowerOk && upperOk;
   }
 
   /**
@@ -125,39 +225,35 @@ export class Range<T> {
       return null;
     }
 
-    const cmpLower = this.scalar.compare(this.lowerEndpoint, other.lowerEndpoint);
-    const cmpUpper = this.scalar.compare(this.upperEndpoint, other.upperEndpoint);
+    // The higher lower cut and the lower upper cut, taken as whole cuts so the
+    // open/closed type travels with the position instead of being re-derived by
+    // a tie-break rule that has to guess which side won.
+    const lowerIsFromThis =
+      this.compareCuts(
+        other,
+        this.lowerEndpoint,
+        lowerSide(this.lowerBoundType),
+        other.lowerEndpoint,
+        lowerSide(other.lowerBoundType)
+      ) >= 0;
 
-    // The range with the higher lower bound, and the range with the lower upper bound.
-    const lowerRange = cmpLower <= 0 ? other : this;
-    const upperRange = cmpUpper >= 0 ? other : this;
+    const upperIsFromThis =
+      this.compareCuts(
+        other,
+        this.upperEndpoint,
+        upperSide(this.upperBoundType),
+        other.upperEndpoint,
+        upperSide(other.upperBoundType)
+      ) <= 0;
 
-    let lowerBoundType: BoundType;
-    let upperBoundType: BoundType;
-
-    if (cmpLower === 0) {
-      lowerBoundType =
-        this.lowerBoundType === BoundType.OPEN || other.lowerBoundType === BoundType.OPEN
-          ? BoundType.OPEN
-          : BoundType.CLOSED;
-    } else {
-      lowerBoundType = lowerRange.lowerBoundType;
-    }
-
-    if (cmpUpper === 0) {
-      upperBoundType =
-        this.upperBoundType === BoundType.OPEN || other.upperBoundType === BoundType.OPEN
-          ? BoundType.OPEN
-          : BoundType.CLOSED;
-    } else {
-      upperBoundType = upperRange.upperBoundType;
-    }
+    const lower = lowerIsFromThis ? this : other;
+    const upper = upperIsFromThis ? this : other;
 
     return new Range<T>(
-      lowerRange.lowerEndpoint,
-      lowerBoundType,
-      upperRange.upperEndpoint,
-      upperBoundType,
+      lower.lowerEndpoint,
+      lower.lowerBoundType,
+      upper.upperEndpoint,
+      upper.upperBoundType,
       this.scalar
     );
   }
@@ -166,18 +262,36 @@ export class Range<T> {
    * Returns true if there exists a (possibly empty) range which is enclosed by
    * both this range and other.
    *
-   * This is overlap-or-endpoint-touch, matching the historical contract. On a
-   * DISCRETE domain you usually also want to know whether two ranges sit
+   * This is overlap-or-endpoint-touch, matching the historical contract, and is
+   * decided on cuts rather than on `contains` so that an EMPTY range can still
+   * be connected: `[0..2)` and the empty `[2..2)` both enclose `[2..2)` and so
+   * are connected, which a `contains`-based test cannot see because an empty
+   * range contains nothing at either end.
+   *
+   * On a DISCRETE domain you usually also want to know whether two ranges sit
    * immediately next to each other with nothing in between — that is
    * `isAdjacentTo`, which needs `succ` on the scalar.
    */
   isConnected(other: Range<T>): boolean {
-    return (
-      this.contains(other.lowerEndpoint) ||
-      this.contains(other.upperEndpoint) ||
-      other.contains(this.lowerEndpoint) ||
-      other.contains(this.upperEndpoint)
-    );
+    const thisStartsBeforeOtherEnds =
+      this.compareCuts(
+        other,
+        this.lowerEndpoint,
+        lowerSide(this.lowerBoundType),
+        other.upperEndpoint,
+        upperSide(other.upperBoundType)
+      ) <= 0;
+
+    const otherStartsBeforeThisEnds =
+      this.compareCuts(
+        other,
+        other.lowerEndpoint,
+        lowerSide(other.lowerBoundType),
+        this.upperEndpoint,
+        upperSide(this.upperBoundType)
+      ) <= 0;
+
+    return thisStartsBeforeOtherEnds && otherStartsBeforeThisEnds;
   }
 
   /**
@@ -240,39 +354,33 @@ export class Range<T> {
    * Returns the minimal range that encloses both this range and other.
    */
   span(other: Range<T>): Range<T> {
-    const cmpLower = this.scalar.compare(this.lowerEndpoint, other.lowerEndpoint);
-    const cmpUpper = this.scalar.compare(this.upperEndpoint, other.upperEndpoint);
+    // The lower of the two lower cuts and the higher of the two upper cuts.
+    const lowerIsFromThis =
+      this.compareCuts(
+        other,
+        this.lowerEndpoint,
+        lowerSide(this.lowerBoundType),
+        other.lowerEndpoint,
+        lowerSide(other.lowerBoundType)
+      ) <= 0;
 
-    // The range with the lower lower bound, and the range with the higher upper bound.
-    const lowerRange = cmpLower <= 0 ? this : other;
-    const upperRange = cmpUpper >= 0 ? this : other;
+    const upperIsFromThis =
+      this.compareCuts(
+        other,
+        this.upperEndpoint,
+        upperSide(this.upperBoundType),
+        other.upperEndpoint,
+        upperSide(other.upperBoundType)
+      ) >= 0;
 
-    let lowerBoundType: BoundType;
-    let upperBoundType: BoundType;
-
-    if (cmpLower === 0) {
-      lowerBoundType =
-        this.lowerBoundType === BoundType.CLOSED || other.lowerBoundType === BoundType.CLOSED
-          ? BoundType.CLOSED
-          : BoundType.OPEN;
-    } else {
-      lowerBoundType = lowerRange.lowerBoundType;
-    }
-
-    if (cmpUpper === 0) {
-      upperBoundType =
-        this.upperBoundType === BoundType.CLOSED || other.upperBoundType === BoundType.CLOSED
-          ? BoundType.CLOSED
-          : BoundType.OPEN;
-    } else {
-      upperBoundType = upperRange.upperBoundType;
-    }
+    const lower = lowerIsFromThis ? this : other;
+    const upper = upperIsFromThis ? this : other;
 
     return new Range<T>(
-      lowerRange.lowerEndpoint,
-      lowerBoundType,
-      upperRange.upperEndpoint,
-      upperBoundType,
+      lower.lowerEndpoint,
+      lower.lowerBoundType,
+      upper.upperEndpoint,
+      upper.upperBoundType,
       this.scalar
     );
   }

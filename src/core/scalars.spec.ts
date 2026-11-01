@@ -155,3 +155,34 @@ describe("bigintScalar", () => {
     );
   });
 });
+
+/**
+ * The `bigint` sentinels are exported constants whose literal value is public
+ * API — a consumer may serialize them, store them, or compare against them — and
+ * nothing else in the suite asserted the string itself, so a silent change would
+ * have passed. Pinned here.
+ */
+describe("the bigint infinity sentinels are pinned to their published values", () => {
+  it("are the exact strings the package publishes", () => {
+    expect(BIGINT_PLUS_INFINITY).toBe("+INF");
+    expect(BIGINT_MINUS_INFINITY).toBe("-INF");
+  });
+
+  it("are strings, so they cannot collide with a real point in the domain", () => {
+    expect(typeof BIGINT_PLUS_INFINITY).toBe("string");
+    expect(typeof BIGINT_MINUS_INFINITY).toBe("string");
+    expect(BIGINT_PLUS_INFINITY).not.toBe(BIGINT_MINUS_INFINITY);
+  });
+
+  it("stay directional: neither end reads as the other", () => {
+    expect(bigintScalar.isPlusInfinity(BIGINT_MINUS_INFINITY)).toBe(false);
+    expect(bigintScalar.isMinusInfinity(BIGINT_PLUS_INFINITY)).toBe(false);
+    expect(bigintScalar.isPlusInfinity(BIGINT_PLUS_INFINITY)).toBe(true);
+    expect(bigintScalar.isMinusInfinity(BIGINT_MINUS_INFINITY)).toBe(true);
+  });
+
+  it("render as the infinities they stand for, not as their own spelling", () => {
+    expect(bigintScalar.format!(BIGINT_PLUS_INFINITY)).toBe("+∞");
+    expect(bigintScalar.format!(BIGINT_MINUS_INFINITY)).toBe("-∞");
+  });
+});
