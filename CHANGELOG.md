@@ -9,10 +9,10 @@ Full reasoning and verification evidence for 1.0.0:
 
 ## [1.0.0] - 2026-11-01
 
-First major release. Five breaking changes; the two most likely to hit you are
-marked **check this**. Three more breaking changes are listed under **Security**
-(frozen `Range`, stricter comparator, validated bound types) — they are security
-fixes first, but they can break code that relied on the old permissiveness.
+First major release. Eight breaking changes; the five most likely to hit you are
+marked **check this**. Three of them (frozen `Range`, stricter comparator,
+validated bound types) are security fixes first, but they can break code that
+relied on the old permissiveness — full rationale under **Security**.
 
 ### Breaking
 
@@ -39,6 +39,26 @@ fixes first, but they can break code that relied on the old permissiveness.
 - **ES5 output dropped.** All targets are now `es2020` and `dist/esm5` is gone.
   Need ES5? Stay on 0.1.x or transpile yourself. (Forced by TypeScript 7 removing
   `target=ES5`.)
+
+- **`Range` instances are frozen.** `Object.freeze(this)` now runs last in the
+  constructor and both prototypes are frozen, so a range cannot be mutated after
+  it is built. **Check this** if you subclass `Range` and assign your own instance
+  fields after `super()` — that now throws. Use prototype members, or pass
+  everything through the constructor. Consumers who only *read* ranges are
+  unaffected. Full rationale under **Security**.
+
+- **`comparableScalar` no longer orders non-numeric operands.** It returns `NaN`
+  (unordered) instead of coercing, because `<` / `>` coerce differently by type
+  pair: `compare("9","10")` was `1` while `compare(9,"10")` was `-1`.
+  **Check this** if you ever passed strings or other non-numbers to a range over the
+  default scalar and relied on them sorting. `bigint` still orders against
+  `number`, including past 2^53.
+
+- **Invalid bound types throw at construction.** Anything that is not exactly
+  `BoundType.OPEN` or `BoundType.CLOSED` now raises instead of being silently read
+  as `CLOSED` (the permissive member, which *includes* the endpoint).
+  **Check this** if bound types come from JSON, a cast, or any unvalidated source —
+  `"OPENN"` used to construct and log as `[1..5]`.
 
 - **`dist/karma` and `dist/spec-node` are no longer published.** Test artifacts,
   never a supported import path.
