@@ -70,6 +70,7 @@ However, the approach shown here with RangeMap also works for tracking attendanc
 
 ```typescript
 import { isEqual } from "lodash-es";
+import { RangeMap, NumberRange } from "range-ts";
 
 // Example input domain object
 class Attendance {
@@ -96,7 +97,7 @@ const attendance: Attendance[] = [
 ];
 
 // Init with empty array
-festivalAttendanceRangeMap.putCoalescing(Range.closedOpen(1, 5), []);
+festivalAttendanceRangeMap.putCoalescing(NumberRange.closedOpen(1, 5), []);
 
 // Iterate over each attendance
 attendance.forEach(({ name, days }) => {
@@ -126,3 +127,61 @@ expect([...result.entries()]).toEqual([
 See also: https://guava.dev/releases/19.0/api/docs/com/google/common/collect/TreeRangeMap.html
 
 Note that the current implementation in this library is a simple array based list of key/value pairs, not a tree based structure.
+
+## Scalars: ranges over exact domains
+
+By default endpoints are compared with `valueOf()`, which is the JavaScript `number`
+double. That is fine for ordinary values, but a double cannot represent integers
+above `2^53` exactly — past that point `x + 1 === x`, so two genuinely distinct
+ids compare as equal.
+
+A `Scalar<T>` describes how to compare, increment and bound a domain, so ranges can
+be built over types that are not JS numbers. `bigintScalar` is shipped for exact
+integer domains:
+
+```typescript
+import { defineRange, bigintScalar, RangeMap, BigIntPoint } from "range-ts";
+
+// A factory bound to one scalar, so you do not pass it at every construction site.
+const R = defineRange(bigintScalar);
+
+// Discord snowflakes are 64-bit ids. As a JS number this is silently wrong:
+//   Number('747982103920246824') === 747982103920246800
+const map = new RangeMap<string, BigIntPoint>();
+map.put(R.closedOpen(BigInt("747982103920246824"), BigInt("747982103920246826")), "exact");
+
+map.get(BigInt("747982103920246825")); // "exact"  — distinguishable
+map.get(BigInt("747982103920246827")); // null
+```
+
+`bigint` has no infinity of its own, so the unbounded sides are sentinel values and
+the point type is the union `BigIntPoint = bigint | typeof BIGINT_PLUS_INFINITY |
+typeof BIGINT_MINUS_INFINITY`. That is why a map over this domain is typed
+`RangeMap<string, BigIntPoint>` rather than `RangeMap<string, bigint>`.
+
+`numberScalar` and `comparableScalar` are also exported for the default behaviour,
+and you can define your own `Scalar<T>` for any domain — see `scalar-range.spec.ts`
+for a worked consumer-side example.
+
+## Module resolution
+
+The package ships CommonJS and ESM builds and resolves through an `exports` map:
+
+| Consumer | Gets |
+| --- | --- |
+| `require("range-ts")` | `dist/cjs` (CommonJS) |
+| `import ... from "range-ts"` | `dist/esm` (ES modules) |
+| TypeScript | `dist/types` |
+
+`range-ts/package.json` is also exported, for tooling that reads the version.
+
+**Deep imports are not supported.** `require("range-ts/dist/cjs/index.js")` and
+similar paths fail with `ERR_PACKAGE_PATH_NOT_EXPORTED`. Everything public is
+reachable from the package root, so there is no reason to reach into `dist/`; the
+restriction exists so internals can be reorganised without it becoming a breaking
+change. Import from `"range-ts"`.
+
+The ESM build is genuine ES modules with explicit file extensions and a
+`{"type":"module"}` marker, so it loads in Node directly and tree-shakes in
+bundlers.
+

@@ -6,11 +6,21 @@
   "module": "./dist/esm/index.js",
   "es2015": "./dist/esm/index.js",
   "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
   "_files_comment": "Ship only what a consumer imports. Without this npm published the whole repo minus .gitignore: 469 files / 14.2 MB including every tsconfig, stryker.conf.json and tsconfig.tsbuildinfo. dist/karma and dist/spec-node are test artifacts and stay out of the tarball.",
   "files": [
     "dist/cjs",
     "dist/esm",
     "dist/types",
+    "!**/*.tsbuildinfo",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"
@@ -27,22 +37,23 @@
   ],
   "scripts": {
     "build:clean": "shx rm -rf ./dist",
-    "compile": "tsc -b ./src/tsconfig.cjs.json ./src/tsconfig.esm.json ./src/tsconfig.types.json ./src/tsconfig.karma.json",
+    "compile": "tsc -b ./src/tsconfig.cjs.json ./src/tsconfig.esm.json ./src/tsconfig.types.json ./src/tsconfig.karma.json ./src/tsconfig.karmaconf.json && node ./scripts/finalize-dist.mjs",
     "compile:spec-node": "tsc -b ./src/tsconfig.spec-node.json",
-    "compile:karma": "tsc -b ./src/tsconfig.karma.json",
+    "compile:karma": "tsc -b ./src/tsconfig.karma.json ./src/tsconfig.karmaconf.json",
     "build": "npm-run-all build:clean compile test",
     "test:node": "npm run compile:spec-node && jasmine --config=jasmine.node.json",
     "test:jsdom": "npm run compile:spec-node && jasmine --config=jasmine.jsdom.json",
-    "test:chrome": "npm run compile:karma && node -e \"const fs=require('fs'); const specs=fs.globSync('dist/karma/**/*.spec.js'); if(!fs.existsSync('dist/karma/test.js')||specs.length===0) throw new Error('zero compiled specs under dist/karma — refusing to report a passing Chrome run over no tests'); console.log('compiled specs for karma:', specs.length)\" && karma start src/karma.conf.js --single-run --no-auto-watch --browsers ChromeHeadless --reporters kjhtml,junit,coverage-istanbul",
+    "test:chrome": "npm run compile:karma && node -e \"const fs=require('fs'); const specs=fs.globSync('dist/karma/**/*.spec.js'); if(!fs.existsSync('dist/karma/test.js')||specs.length===0) throw new Error('zero compiled specs under dist/karma \u2014 refusing to report a passing Chrome run over no tests'); console.log('compiled specs for karma:', specs.length)\" && karma start dist/karma-conf/karma.conf.js --single-run --no-auto-watch --browsers ChromeHeadless --reporters kjhtml,junit,coverage-istanbul",
     "test:mutation": "npm run compile:spec-node && stryker run",
     "test": "npm-run-all test:node test:jsdom test:chrome",
-    "test-dev": "karma start src/karma.conf.js"
+    "test-dev": "npm run compile:karma && karma start dist/karma-conf/karma.conf.js"
   },
   "author": "Marc Fokkert <marcfokkert@xz1.nl>",
   "license": "MIT",
   "devDependencies": {
     "@stryker-mutator/core": "^10.1.1",
     "@types/jasmine": "^7.0.0",
+    "@types/karma": "^6.3.9",
     "@types/lodash": "^4.17.15",
     "@types/lodash-es": "4.17.12",
     "@types/node": "^26.6.6",

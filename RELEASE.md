@@ -135,7 +135,7 @@ was rejected), and a tag would assert a release that does not exist.
 ```bash
 npm view range-ts version          # the new version
 npm view range-ts dist.tarball     # tarball URL
-npm view range-ts dist.fileCount   # 55 — see the allowlist note below
+npm view range-ts dist.fileCount   # 54 — see the allowlist note below
 git tag -l 'v*' | tail -3         # tag present
 gh release view v1.0.0            # release present, notes rendered (needs gh; see note above)
 ```
@@ -167,10 +167,19 @@ If the package is still only **staged**, rollback is trivial: `npm stage reject`
 - **`ignore-scripts=true` and `min-release-age=7`** in `.npmrc` apply to the
   release build too. Compatible with publishing: the native TS packages are
   prebuilt binaries needing no install script.
-- **The tarball is allowlisted** by `files` in `package.json`
-  (`dist/cjs`, `dist/esm`, `dist/types`, README, LICENSE, CHANGELOG). Before the
-  allowlist, publish shipped 469 files / 14.2 MB including every tsconfig and
-  `tsconfig.tsbuildinfo`. Check `dist.fileCount` rather than trusting it held.
+- **The tarball is allowlisted** by `files` in `package.json`:
+  `dist/cjs`, `dist/esm`, `dist/types`, README, LICENSE, CHANGELOG, with
+  `!**/*.tsbuildinfo` negated out. Before the allowlist, publish shipped
+  469 files / 14.2 MB including every tsconfig. Check `dist.fileCount` rather
+  than trusting it held.
+  Note that `.npmignore` does **not** work here: a `files` allowlist overrides
+  it, so an `.npmignore` containing `*.tsbuildinfo` was tried and had no effect
+  at all. The exclusion has to be a `!` pattern inside `files` itself. The
+  `tsbuildinfo` files stay on disk (they are what makes `tsc -b` incremental)
+  and are excluded only at pack time.
+  The two module-type markers `dist/esm/package.json` and `dist/cjs/package.json`
+  are inside the allowlisted directories and ship with them — verify they are
+  present, because without them Node reparses every file to guess the module type.
 - **Code Climate is gone.** The test reporter is archived
   (`qltysh-archive/test-reporter`) and its download URLs 404. Coverage lives in
   the local istanbul and Stryker reports only.

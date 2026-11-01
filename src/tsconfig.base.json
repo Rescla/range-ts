@@ -8,6 +8,7 @@
   ],
   "exclude": [
     "./**/*.spec.ts",
-    "test.ts"
+    "test.ts",
+    "karma.conf.ts"
   ]
 }

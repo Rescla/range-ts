@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es2020",
+    "outDir": "../dist/karma-conf",
+    "noEmit": false,
+    "incremental": false,
+    "sourceMap": false,
+    "removeComments": false,
+    "types": ["node", "karma"]
+  },
+  "files": ["./karma.conf.ts"]
+}

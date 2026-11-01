@@ -6,8 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - 2026-11-01
 
-First major release. The breaking change is the end of ES5 output; everything else
-is additive or tooling.
+First major release. Two breaking changes: the end of ES5 output, and deep imports
+being closed off. Everything else is additive or tooling.
 
 ### Breaking
 - **ES5 output dropped.** All build targets now compile to `es2020`. The
@@ -17,9 +17,20 @@ is additive or tooling.
   along with `baseUrl`, `moduleResolution=node10` and `downlevelIteration`.
 - **`dist/karma` and `dist/spec-node` are no longer published.** They are test
   artifacts and were never part of the import surface.
+- **Deep imports are no longer resolvable.** `require("range-ts/dist/cjs/index.js")`,
+  `import "range-ts/dist/esm/index.js"` and similar paths now fail with
+  `ERR_PACKAGE_PATH_NOT_EXPORTED`, because the package declares an `exports` map
+  that exposes only `.` and `./package.json`. This was verified safe to do: every
+  public name in the library (16 of 16) is already reachable from the package
+  root, so a deep import could not obtain anything additional — it could only
+  create a dependency on an internal *path*. The failure is loud and happens at
+  the consumer's build time rather than silently. `range-ts/package.json` remains
+  exported for tooling that reads the version.
+  Before 1.0.0 there was no `exports` map, so anything under `dist/` was
+  reachable by anyone who knew the layout.
 
 ### Added
-- **Generic `Scalar<T>` support.** `Range<T>` and `RangeMap<K, V>` now work over
+- **Generic `Scalar<T>` support.** `Range<T>` and `RangeMap<T, P, R>` now work over
   any exact scalar type (BigInt, custom decimal/decimal.js wrappers) rather than
   being tied to JS `number`, without the library depending on any of them.
   - Infinity is an explicit value each scalar owns. There is no "absent means
@@ -34,6 +45,36 @@ is additive or tooling.
 - **Supply-chain hardening** in `.npmrc`: `min-release-age=7` (refuse package
   versions published less than 7 days ago) and `ignore-scripts=true` (never run
   dependency lifecycle scripts). Verified against a clean `npm ci` + full build.
+- **`exports` map** with `types` / `import` / `require` conditions, so Node ESM
+  consumers get the real ESM build instead of falling back to CommonJS interop
+  through `main`. Verified: `import.meta.resolve('range-ts')` now returns
+  `dist/esm/index.js` where it previously resolved to `dist/cjs`.
+- **`sideEffects: false`**, so bundlers can drop unused exports. This is asserted
+  from evidence rather than assumed: all eight source files were checked for
+  top-level side effects and none exist.
+- **`dist/esm` is now loadable by Node's ESM loader.** It previously emitted
+  extensionless relative imports (`export * from "./core/bound-type"`), which
+  bundlers resolve but Node cannot, so the ESM build was bundler-only. A new
+  `scripts/finalize-dist.mjs` build step adds explicit `.js` extensions and
+  writes `{"type":"module"}` / `{"type":"commonjs"}` markers into `dist/esm`
+  and `dist/cjs` so Node declares the module type instead of reparsing to guess
+  (which emitted `MODULE_TYPELESS_PACKAGE_JSON`).
+  The fix is deliberately in the build, not the source: the sources stay plain
+  extensionless TypeScript and the target-specific shape is produced by the
+  compile step. `finalize-dist.mjs` re-scans after rewriting and fails the build
+  if any extensionless specifier survives, because a scripted replace that
+  silently matched nothing would otherwise ship an ESM build Node still cannot
+  load.
+- **`src/karma.conf.ts`** replaces `src/karma.conf.js`. Karma 6 loads its config
+  with a plain `require()` and TypeScript 7 removed the JS API
+  (`transpileModule`, `createProgram`) that `ts-node` hooks, so runtime TS config
+  loading is unavailable on this toolchain; the config compiles via
+  `tsconfig.karmaconf.json` to `dist/karma-conf/karma.conf.js` and Karma runs
+  that. All paths in it are anchored to the repo root rather than to the file,
+  since the runnable copy sits in `dist/karma-conf/` and a `__dirname`-relative
+  path written as if it were in `src/` would silently land coverage reports one
+  level wrong. `karma.conf.ts` is excluded from the library builds so it cannot
+  leak into the published bundles.
 
 ### Changed
 - TypeScript 5 → 7; `cjs`/`esm`/`karma` targets `es5`/`es2015` → `es2020`.
@@ -45,6 +86,19 @@ is additive or tooling.
   `TOTAL: 0 SUCCESS`).
 
 ### Fixed
+- **`tsconfig.*.tsbuildinfo` no longer ships.** Three of them were in the tarball
+  (they were in 0.1.8 too). They are incremental-compiler state that a consumer
+  cannot use, and they must stay on disk for `tsc -b` to be incremental, so they
+  are excluded at pack time with `!**/*.tsbuildinfo` in `files` rather than
+  deleted by the build. `.npmignore` was tried first and does nothing here — a
+  `files` allowlist overrides it — so the exclusion lives in `files` itself.
+  Tarball: 57 files → 54.
+- **The README's `RangeMap` example did not run.** It called
+  `Range.closedOpen(1, 5)`, but `Range` has no static constructors — the statics
+  live on `NumberRange` (and on factories from `defineRange`). It also used
+  `RangeMap` and `NumberRange` without importing them. Both corrected, and the
+  example was executed against the packed artifact to confirm it now produces
+  exactly the output its own `expect` asserts.
 - **Published tarball: 469 files / 14.2 MB → 55 files / 150 kB.** There was no
   `files` allowlist, so npm shipped the entire repo minus `.gitignore`: every
   tsconfig, `stryker.conf.json` and `tsconfig.tsbuildinfo`.
