@@ -5,6 +5,7 @@ import {
   comparableScalar,
   numberScalar,
 } from "./scalars";
+import { NumberRange } from "../number-range/number-range";
 
 /**
  * Unit-level coverage of the three shipped scalars. The range-level specs exercise
@@ -184,5 +185,92 @@ describe("the bigint infinity sentinels are pinned to their published values", (
   it("render as the infinities they stand for, not as their own spelling", () => {
     expect(bigintScalar.format!(BIGINT_PLUS_INFINITY)).toBe("+∞");
     expect(bigintScalar.format!(BIGINT_MINUS_INFINITY)).toBe("-∞");
+  });
+});
+
+/**
+ * The numeric-primitive gate in `comparableScalar.compare`.
+ *
+ * Before the gate, `<`/`>` coerced — and coerced DIFFERENTLY by type pair. Two
+ * strings compared lexicographically, a number against a string compared
+ * numerically. So the comparator ordered the same two values differently
+ * depending on the runtime type of the argument. That is not a rounding
+ * problem, it is a broken trichotomy: `intersection`/`span` merge bound types
+ * on `compare() === 0`, and every sorted structure downstream assumes the
+ * comparator is consistent. Measured before the fix:
+ *
+ *   compare("9", "10") =  1   compare(9, "10") = -1
+ *
+ * These tests pin the two properties that matter, in both directions: strings
+ * never produce an ordering, and bigint DOES still produce one (JS defines the
+ * cross-type bigint/number ordering exactly, so gating it off would break
+ * legitimate mixed-domain use this scalar has always served).
+ */
+describe("comparableScalar does not guess at non-numeric orderings", () => {
+  it("never orders two strings lexicographically", () => {
+    expect(comparableScalar.compare("9" as any, "10" as any)).toBeNaN();
+    expect(comparableScalar.compare("10" as any, "9" as any)).toBeNaN();
+  });
+
+  it("is not type-dependent for the same numeric pair", () => {
+    // The exact disagreement the gate removes: all three spellings below must
+    // agree, and they agreed by being WRONG before.
+    expect(comparableScalar.compare("9" as any, "10" as any)).toBeNaN();
+    expect(comparableScalar.compare(9, "10" as any)).toBeNaN();
+    expect(comparableScalar.compare("9" as any, 10)).toBeNaN();
+  });
+
+  it("still orders bigint against number, including past 2^53", () => {
+    expect(comparableScalar.compare(0, 30n as any)).toBe(-1);
+    expect(comparableScalar.compare(30n as any, 0)).toBe(1);
+    expect(comparableScalar.compare(9007199254740993n as any, 9007199254740992)).toBe(1);
+  });
+
+  it("rejects an object whose valueOf returns a string", () => {
+    const strValued = { valueOf: () => "5" } as any;
+    expect(comparableScalar.compare(strValued, 5)).toBeNaN();
+  });
+
+  it("rejects booleans, which are not a point domain", () => {
+    expect(comparableScalar.compare(true as any, false as any)).toBeNaN();
+  });
+
+  it("keeps the documented NaN contract for genuinely unordered values", () => {
+    expect(comparableScalar.compare(NaN, NaN)).toBeNaN();
+    expect(comparableScalar.compare(NaN, 1)).toBeNaN();
+    expect(comparableScalar.compare(1, NaN)).toBeNaN();
+  });
+
+  it("leaves 10 vs 10n unordered rather than claiming cross-type equality", () => {
+    // `10 === 10n` is false in JS while `10 == 10n` is true. This comparator
+    // does not assert cross-type numeric equality, and the cross-scalar guard
+    // depends on that. Pinned so that changing it is a deliberate decision
+    // with its own reasoning, not a side effect of touching this function.
+    expect(comparableScalar.compare(10, 10n as any)).toBeNaN();
+  });
+});
+
+describe("the shipped scalars are immutable singletons", () => {
+  it("are frozen", () => {
+    expect(Object.isFrozen(comparableScalar)).toBe(true);
+    expect(Object.isFrozen(numberScalar)).toBe(true);
+    expect(Object.isFrozen(bigintScalar)).toBe(true);
+  });
+
+  it("cannot have compare replaced to invert ordering process-wide", () => {
+    // The hazard: every Range reads `this.scalar.compare` on every operation,
+    // and these are shared module singletons, so one assignment anywhere
+    // rewrites ordering for the whole app — invisibly to the type system and
+    // to the logs. Asserted by post-condition rather than by the throw, so it
+    // holds in strict mode (throws) and in sloppy mode (silently dropped).
+    const original = comparableScalar.compare;
+    try {
+      (comparableScalar as any).compare = () => 0;
+    } catch {
+      /* strict mode throws; sloppy mode drops the write. Both are fine. */
+    }
+    expect(comparableScalar.compare).toBe(original);
+    expect(comparableScalar.compare(1, 2)).toBe(-1);
+    expect(NumberRange.all().isEmpty()).toBe(false);
   });
 });

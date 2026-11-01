@@ -1,4 +1,4 @@
-import { BoundType } from "../core/bound-type";
+import { assertBoundType, BoundType } from "../core/bound-type";
 import { Scalar } from "../core/scalar";
 
 /**
@@ -67,12 +67,20 @@ function describe<T>(scalar: Scalar<T>, v: T): string {
  */
 export class Range<T> {
   constructor(
-    public lowerEndpoint: T,
-    public lowerBoundType: BoundType,
-    public upperEndpoint: T,
-    public upperBoundType: BoundType,
-    public scalar: Scalar<T>
+    public readonly lowerEndpoint: T,
+    public readonly lowerBoundType: BoundType,
+    public readonly upperEndpoint: T,
+    public readonly upperBoundType: BoundType,
+    public readonly scalar: Scalar<T>
   ) {
+    // Both bound types are validated before anything else reads them, and
+    // before the inversion check, so a garbage bound reports as a garbage
+    // bound rather than as a confusing ordering error. See `assertBoundType`:
+    // every downstream test is `=== OPEN`, so a value that is not exactly
+    // OPEN is read as CLOSED, which silently includes the endpoint.
+    assertBoundType(lowerBoundType, "lowerBoundType");
+    assertBoundType(upperBoundType, "upperBoundType");
+
     // An INVERTED range — one that begins above where it ends — is rejected here,
     // at the only point where it can be rejected cheaply and completely.
     //
@@ -106,6 +114,30 @@ export class Range<T> {
           `use an empty range such as [v..v) if you mean "nothing".`
       );
     }
+
+    // IMMUTABILITY — the reason this is `Object.freeze` and not just `readonly`.
+    //
+    // `readonly` is a compile-time modifier that erases. Every guarantee this
+    // class makes about itself is made in this constructor: the bound types are
+    // valid, the endpoints are not inverted, the scalar is the one that ordered
+    // them. A field written after construction invalidates all of it, and the
+    // 1.0.0 inversion guard in particular becomes bypassable at runtime:
+    //
+    //   const r = NumberRange.closed(1, 10);
+    //   r.lowerEndpoint = 99;   // [99..10], isEmpty() === false
+    //
+    // which is exactly the inverted-but-not-empty state the comment above
+    // says cannot be given a consistent meaning. It also reaches the map: a
+    // Range is stored by reference and handed back out by `getEntry`/
+    // `asMapOfRanges`, so a consumer mutating what it read corrupts the
+    // disjointness and sort invariants `span` and `subRangeMap` depend on.
+    //
+    // Freezing is the only guarantee that survives a JS caller, a cast, or a
+    // deserialized object. Consequence for subclass authors: a subclass may
+    // add PROPERTIES TO ITS PROTOTYPE (getters, methods) but must not assign
+    // its own fields after `super()` — the instance is frozen before the
+    // subclass constructor resumes. `NumberRange` is written to that rule.
+    Object.freeze(this);
   }
 
   /**
@@ -436,6 +468,15 @@ export class Range<T> {
    * Returns a string representation of this range, such as "[3..5)".
    * The scalar renders its own infinities, so the output is identical across
    * domains that model them differently.
+   *
+   * NOTE FOR CONSUMERS — this is a sink, not a sanitizer. The text embeds
+   * whatever the endpoints are and whatever `scalar.format` returns, and a
+   * `format` is caller-supplied code that can return any string (it may call
+   * into a third-party type's `toISOString`, a currency formatter, anything).
+   * Do not interpolate the result into HTML, a shell command, a SQL statement
+   * or a log line that other tooling parses without escaping it. The range
+   * machinery guarantees the SHAPE of the bound markers; it makes no claim
+   * about the endpoint text inside them.
    */
   toString(): string {
     const lower = this.lowerBoundType === BoundType.OPEN ? "(" : "[";
@@ -490,7 +531,7 @@ export interface RangeFactory<T> {
 export function defineRange<T>(scalar: Scalar<T>): RangeFactory<T> {
   const negInf = scalar.minusInfinity;
   const posInf = scalar.plusInfinity;
-  return {
+  const factory: RangeFactory<T> = {
     scalar,
     negativeInfinity: negInf,
     positiveInfinity: posInf,
@@ -510,4 +551,14 @@ export function defineRange<T>(scalar: Scalar<T>): RangeFactory<T> {
     upTo: (endpoint, boundType) =>
       new Range<T>(negInf, BoundType.OPEN, endpoint, boundType, scalar),
   };
+  // A factory is a shared handle onto a scalar and the constructors that read
+  // it. Frozen so a consumer cannot swap `R.closedOpen` or `R.scalar` and have
+  // every range built through it afterwards carry the substitution.
+  return Object.freeze(factory);
 }
+
+// Same reasoning one level down. `Range.prototype.contains = () => true` from
+// any module in the process would otherwise rewrite membership testing for every
+// range in the app, invisibly to the type system. Freezing the prototype stops
+// that; subclass methods live on their own prototypes and are unaffected.
+Object.freeze(Range.prototype);

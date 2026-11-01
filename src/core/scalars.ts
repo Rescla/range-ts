@@ -2,6 +2,20 @@ import { Comparable } from "./comparable";
 import { Scalar } from "./scalar";
 
 /**
+ * The only value types this library will compare.
+ *
+ * `number` and `bigint` both have a defined numeric ordering, and JS defines
+ * the cross-type ordering between them exactly (no coercion to a lossy double:
+ * `9007199254740993n > 9007199254740992` is a true comparison of exact
+ * values). Nothing else does — a string against a number, or two strings, is
+ * where the relational operators stop being a comparator and start being a
+ * coercion lottery. See `comparableScalar.compare`.
+ */
+function isNumericPrimitive(v: unknown): v is number | bigint {
+  return typeof v === "number" || typeof v === "bigint";
+}
+
+/**
  * The default scalar for `Comparable` endpoints: ordering is decided by
  * `valueOf()`, exactly as the library always behaved.
  *
@@ -19,12 +33,49 @@ import { Scalar } from "./scalar";
  */
 export const comparableScalar: Scalar<Comparable> = {
   compare(a: Comparable, b: Comparable): number {
-    const av = a == null ? NaN : a.valueOf();
-    const bv = b == null ? NaN : b.valueOf();
+    // Typed `unknown` deliberately. `Comparable.valueOf(): number` is a
+    // COMPILE-TIME promise; at runtime this is the boundary where something
+    // else arrives — a string off a JSON payload, a form field, a cast, a
+    // plain-JS caller. `Comparable` is an interface anyone can implement, so
+    // the promise is not ours to trust.
+    //
+    // Why the check cannot be skipped: `<` and `>` coerce, and they coerce
+    // DIFFERENTLY by type pair. Two strings compare LEXICOGRAPHICALLY while a
+    // number against a string compares NUMERICALLY, so this comparator orders
+    // the same two values differently depending on the runtime type of the
+    // argument. Measured before the fix:
+    //
+    //   compare("9", "10") =  1   (lexicographic)
+    //   compare(9,  "10") = -1   (numeric)      <- same values, opposite answer
+    //   NumberRange.closed("1", "10").contains("9") = false
+    //
+    // That breaks the trichotomy contract `intersection`/`span` rely on when
+    // they merge bound types, and an inconsistent comparator is the classic
+    // way to corrupt a sorted structure.
+    const av: unknown = a == null ? NaN : a.valueOf();
+    const bv: unknown = b == null ? NaN : b.valueOf();
+
+    // ACCEPTED: number and bigint. Rejected as UNORDERED: everything else.
+    // bigint is accepted because JS defines an exact cross-type numeric
+    // ordering between bigint and number — `0 < 30n` is a real answer, not a
+    // coercion artifact, and rejecting it would break legitimate mixed-domain
+    // comparisons this scalar has always served. A string has no such defined
+    // ordering against a number; its result depends on which operand coerces,
+    // which is the artifact above.
+    if (!isNumericPrimitive(av) || !isNumericPrimitive(bv)) {
+      return NaN;
+    }
+
     if (av < bv) return -1;
     if (av > bv) return 1;
     if (av === bv) return 0;
     // NaN involved: fall back to identity so equality stays reflexive.
+    //
+    // This also leaves `10` vs `10n` UNORDERED rather than equal, which is
+    // deliberate and pinned by the cross-scalar tests: `10 === 10n` is false
+    // in JS while `10 == 10n` is true, and this comparator does not claim
+    // cross-type numeric equality. Changing that would be a behaviour change
+    // dressed up as a security fix; it belongs in its own decision.
     return a === b ? 0 : NaN;
   },
 
@@ -55,7 +106,11 @@ export const comparableScalar: Scalar<Comparable> = {
   },
 };
 
-/** Scalar for plain JS `number` endpoints. Same precision limits as above. */
+/**
+ * Scalar for plain JS `number` endpoints. Same precision limits as above.
+ *
+ * Frozen: see the note on `comparableScalar`.
+ */
 export const numberScalar: Scalar<number> = {
   compare(a: number, b: number): number {
     if (a < b) return -1;
@@ -172,3 +227,22 @@ export const bigintScalar: Scalar<BigIntPoint> = {
     return a - BigInt(1);
   },
 };
+
+// ---------------------------------------------------------------------------
+// Freeze the shipped scalars.
+//
+// Each of these is a module-level singleton handed by reference to every Range
+// constructed anywhere in the process. Unfrozen, one line in any module flips
+// ordering for the whole app, silently:
+//
+//   comparableScalar.compare = () => 0;
+//   NumberRange.all().isEmpty()   // -> true
+//
+// That is not a hypothetical tamper-resistance exercise: `Range` reads
+// `this.scalar.compare` on every operation, so a mutated scalar is a
+// process-wide correctness hazard, and the mutation is invisible in the type
+// system and in the logs. Freezing makes the singleton actually immutable.
+// ---------------------------------------------------------------------------
+Object.freeze(comparableScalar);
+Object.freeze(numberScalar);
+Object.freeze(bigintScalar);

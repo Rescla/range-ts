@@ -29,6 +29,7 @@
   "ignorePatterns": ["!dist/**"],
   "symlinkNodeModules": true,
   "mutate": [
+    "dist/spec-node/core/bound-type.js",
     "dist/spec-node/core/scalars.js",
     "dist/spec-node/range/range.js",
     "dist/spec-node/range-map/range-map.js",

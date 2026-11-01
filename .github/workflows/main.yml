@@ -12,6 +12,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    # Explicit least privilege. Without a `permissions:` key this job inherits
+    # the repository/org default, and the GitHub default for new repos has been
+    # "Read and write" — so a job that only needs to read the tree has been
+    # handed a writable GITHUB_TOKEN for every push and PR. A writable token in
+    # a job that runs unmerged PR code is the shape a supply-chain attack rides
+    # on (the workflow could be edited, a tag moved, a release note rewritten).
+    # This job writes nothing, so it gets nothing.
+    permissions:
+      contents: read
+
     steps:
       - uses: actions/checkout@v7
 

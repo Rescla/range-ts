@@ -21,11 +21,18 @@ import { Range } from "../range/range";
  * Based off of https://guava.dev/releases/19.0/api/docs/com/google/common/collect/Range.html
  */
 export class NumberRange extends Range<Comparable> {
+  // No `public` on these parameters, deliberately. A TypeScript parameter
+  // property emits an assignment AFTER `super()` returns, and `Range`'s
+  // constructor freezes the instance — so a parameter property here would
+  // throw `TypeError: Cannot assign to read only property` the moment any
+  // NumberRange was built. The fields are already set, and typed as
+  // `Comparable`, by the base constructor; redeclaring them here would add
+  // nothing but a broken write.
   constructor(
-    public lowerEndpoint: Comparable,
-    public lowerBoundType: BoundType,
-    public upperEndpoint: Comparable,
-    public upperBoundType: BoundType
+    lowerEndpoint: Comparable,
+    lowerBoundType: BoundType,
+    upperEndpoint: Comparable,
+    upperBoundType: BoundType
   ) {
     super(lowerEndpoint, lowerBoundType, upperEndpoint, upperBoundType, comparableScalar);
   }
@@ -123,3 +130,8 @@ export class NumberRange extends Range<Comparable> {
     return new NumberRange(r.lowerEndpoint, r.lowerBoundType, r.upperEndpoint, r.upperBoundType);
   }
 }
+
+// See the note on `Object.freeze(Range.prototype)` in range.ts: this class is
+// the public JS-number entry point, so its prototype is the one a consumer's
+// module is most likely to reach for. Frozen for the same reason.
+Object.freeze(NumberRange.prototype);

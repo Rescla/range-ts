@@ -10,7 +10,9 @@ Full reasoning and verification evidence for 1.0.0:
 ## [1.0.0] - 2026-11-01
 
 First major release. Five breaking changes; the two most likely to hit you are
-marked **check this**.
+marked **check this**. Three more breaking changes are listed under **Security**
+(frozen `Range`, stricter comparator, validated bound types) — they are security
+fixes first, but they can break code that relied on the old permissiveness.
 
 ### Breaking
 
@@ -110,11 +112,73 @@ marked **check this**.
 - Removed `karma-typescript` / `karma-typescript-es6-transform`: declared, never
   loaded, and their `typescript@<=5` peer conflicted with TS 7.
 
+### Security
+
+A full audit of this tree found **no remotely triggerable vulnerability and no
+prototype-pollution path**. What it found was six ways to break an invariant the
+library asserts about itself — each producing a silently wrong answer rather
+than an error. All six are fixed and pinned by tests.
+
+- **`Range` instances are frozen.** Every guarantee the constructor makes —
+  bound types valid, endpoints not inverted, the scalar that ordered them — is
+  undone by a field written afterwards, and `readonly` is compile-time only.
+  Before: `NumberRange.closed(1, 10)` then `r.lowerEndpoint = 99` gave
+  `[99..10]` with `isEmpty() === false`, the inverted-but-not-empty state the
+  constructor itself refuses to build. Ranges are stored by reference and
+  handed back by `getEntry` / `asMapOfRanges`, so a consumer mutating what it
+  read corrupted the disjointness invariant `span` and `subRangeMap` rely on.
+  Now `Object.freeze(this)` runs last in the constructor, the fields are
+  `readonly`, and `Range.prototype` / `NumberRange.prototype` are frozen so
+  `contains` cannot be rewritten process-wide.
+  **Breaking** for subclasses that assign their own instance fields after
+  `super()` — use prototype members, or pass everything through the `Range`
+  constructor.
+- **`comparableScalar` no longer orders non-numeric operands.** `<` / `>`
+  coerce, and coerce *differently by type pair*: two strings compared
+  lexicographically, a number against a string compared numerically. The
+  comparator answered the same question differently depending on runtime type —
+  `compare("9","10") = 1` while `compare(9,"10") = -1`. A comparator must be
+  consistent: `intersection` / `span` merge bound types on `compare() === 0`
+  and every sorted structure assumes the ordering holds. Non-numeric primitives
+  now return `NaN` (unordered). bigint still orders against number, including
+  past 2^53, because JS defines that ordering exactly. **Breaking** if you were
+  relying on string coercion.
+- **Bound types are validated at construction.** Every consumer asks
+  `x === BoundType.OPEN ? … : …`, so any value that is not exactly `OPEN` is
+  read as `CLOSED` — the permissive member, which *includes* the endpoint. A
+  TypeScript enum erases, so nothing checked a value arriving from JSON or a
+  cast. Before: `new Range(1, "OPENN", 5, CLOSED, …)` constructed, `contains(1)`
+  was `true`, and `toString()` rendered `[1..5]` so the log agreed with the
+  wrong answer. `assertBoundType` now throws on anything but the two members,
+  at the single choke point every `Range` passes through.
+- **`likeRange` will not call a non-`Range` constructor.** It reflected
+  `proto.constructor` and invoked it with four arguments the library had
+  computed. Now bounded to `Range` and its subclasses.
+- **`get` / `getEntry` are O(log n).** They were a linear `find` over the
+  insertion-order array — ~500 µs per lookup at 10k entries, on the hot path of
+  every consumer. Now a binary search over a lazily built, write-invalidated
+  sorted view (~1–2 µs). The comparison is cut-aware: "last entry whose lower
+  endpoint does not exceed the key" is the wrong rule with a value-only `<=`, and
+  that first version failed the existing open-boundary tests. Ties on lower
+  value break CLOSED-first, matching cut algebra.
+- **CI token permissions made explicit.** `main.yml` and `codeql-analysis.yml`
+  carried no `permissions:` key, so both inherited the repository default —
+  historically "Read and write" — for jobs that write nothing.
+
+Deliberately **not** changed, with reasons: `subRangeMap` returns values by
+reference (documented — the map owns value identity, and copying would break
+`putCoalescing`'s `eq`); `toString()` is a sink, not a sanitizer (documented);
+the `Math.random()` sentinel in `remove()` compares by reference, so the random
+id is decoration (commented as such).
+
 ### Quality
 
-- 223 specs across node, jsdom and Chrome (was 174).
-- Mutation score 78.9% → 94.9% → 93.71% → **93.89%** (469 killed, 7 timeout,
-  31 survived of 507). All 31 survivors individually classified — see the notes.
+- 266 specs across node, jsdom and Chrome (was 223).
+- Mutation score 78.9% → 94.9% → 93.71% → 93.89% → **94.27%** (564 killed,
+  12 timeout, 35 survived of 611). All 35 survivors individually classified —
+  see the notes. The new `bound-type.js` file went 67.65% → 91.18% under the
+  same scrutiny; its three remaining survivors are TypeScript's emitted
+  `__esModule` prologue, not library logic.
 - Differential against 0.1.8 over the shared API surface: **no `true → false`
   regressions** and **no new throws on non-inverted input**.
 - Legacy and exact-domain consumer projects typecheck under `strict` with

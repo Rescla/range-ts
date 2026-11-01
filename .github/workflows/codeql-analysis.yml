@@ -25,6 +25,14 @@ jobs:
     name: Analyze
     runs-on: ubuntu-latest
 
+    # Explicit least privilege. CodeQL only reads the tree and uploads results
+    # through its own action; it has no reason to hold a writable GITHUB_TOKEN.
+    # Without this key the job inherits the repo default, historically
+    # "Read and write".
+    permissions:
+      contents: read
+      security-events: write
+
     strategy:
       fail-fast: false
       matrix:
