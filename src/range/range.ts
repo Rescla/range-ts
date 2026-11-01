@@ -29,6 +29,19 @@ function upperSide(boundType: BoundType): number {
 }
 
 /**
+ * Render a value for an error message. Defensive on purpose: this runs while we
+ * are already throwing, and a `format()` that itself blew up would replace the
+ * real error with an unrelated one and hide the inversion we are reporting.
+ */
+function describe<T>(scalar: Scalar<T>, v: T): string {
+  try {
+    return scalar.format ? scalar.format(v) : String(v);
+  } catch {
+    return "<unrenderable>";
+  }
+}
+
+/**
  * A range (or "interval") around a contiguous span of values of some scalar
  * domain `T`, with each side independently open or closed.
  *
@@ -59,7 +72,41 @@ export class Range<T> {
     public upperEndpoint: T,
     public upperBoundType: BoundType,
     public scalar: Scalar<T>
-  ) {}
+  ) {
+    // An INVERTED range — one that begins above where it ends — is rejected here,
+    // at the only point where it can be rejected cheaply and completely.
+    //
+    // Why it cannot be allowed to exist: it contains nothing, yet `isEmpty()` is
+    // FALSE for it, because isEmpty() asks "did the endpoints meet with an open
+    // side" and an inverted range never met at all. So every guard this library
+    // builds on isEmpty() — the write-side guard in `RangeMap.combinedPut`, the
+    // read-side filters in `asMapOfRanges` / `span` — lets it straight through,
+    // and a map holding only `[0.5..-0.5)` reports a span of `[0.5..-0.5)` and
+    // one entry in `asMapOfRanges` for a map that associates a value with
+    // nothing. That is not a second kind of empty; it is a hole punched through
+    // the first one, and it is invisible to exactly the checks that exist to stop
+    // empty ranges causing that.
+    //
+    // The rule is on the endpoint VALUES, not on cut positions. Cut order
+    // deliberately puts an open LOWER bound above an open UPPER bound at the same
+    // value — that is what makes `(v..v)` empty-but-valid — so using cuts here
+    // would reject `(3..3)` alongside the genuine inversions. Value order draws
+    // the line where it belongs: `compare(lower, upper) > 0` is inverted, and all
+    // four equal-endpoint combinations stay constructible.
+    //
+    // Unordered endpoints do NOT throw. `NaN > 0` is false, so the documented
+    // non-answer keeps propagating as a negative rather than turning into a
+    // construction error (see the `Scalar.compare` contract).
+    if (scalar.compare(lowerEndpoint, upperEndpoint) > 0) {
+      throw new Error(
+        `Range: lower endpoint (${describe(scalar, lowerEndpoint)}) is greater than ` +
+          `upper endpoint (${describe(scalar, upperEndpoint)}). An inverted range contains ` +
+          `nothing but is not isEmpty(), so no guard built on isEmpty() can catch it and it ` +
+          `cannot be given a consistent meaning. Put the endpoints the right way round, or ` +
+          `use an empty range such as [v..v) if you mean "nothing".`
+      );
+    }
+  }
 
   /**
    * True if this range has a real lower bound, i.e. the lower side is not

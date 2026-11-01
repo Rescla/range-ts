@@ -101,8 +101,11 @@ jobs:
             try { raw = JSON.parse(fs.readFileSync("/tmp/staged.json", "utf8")); }
             catch (e) { console.log(""); process.exit(0); }
             const rows = Array.isArray(raw) ? raw : (raw.staged || raw.data || []);
-            const hit = rows.find(r => (r.package || r.name) === "range-ts" && r.version === process.argv[1])
-                    || rows[0];
+            // Match on name AND version only. There is deliberately no `|| rows[0]`
+            // fallback: if the filter misses, printing some other staged package's
+            // id would hand the reader an instruction that approves the wrong
+            // artifact. Missing is reported as missing below, with the raw output.
+            const hit = rows.find(r => (r.package || r.name) === "range-ts" && r.version === process.argv[1]);
             if (!hit) { console.log(""); process.exit(0); }
             console.log(hit.stageId || hit.stage_id || hit.id || "");
           ' "$VERSION" || true)

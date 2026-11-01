@@ -24,8 +24,13 @@
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const DIST = new URL("../dist", import.meta.url).pathname;
+// fileURLToPath, not `new URL(...).pathname`: pathname returns the PERCENT-ENCODED
+// form, so a repo under a path with a space or a non-ASCII character would give
+// "%20/..." and every existsSync/read below would miss. Cheap insurance against a
+// build that works on the maintainer's machine and fails on everyone else's.
+const DIST = fileURLToPath(new URL("../dist", import.meta.url));
 
 function walk(dir) {
   if (!existsSync(dir)) return [];

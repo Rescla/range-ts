@@ -56,6 +56,29 @@ return {
 };
 ```
 
+### Empty and inverted ranges
+
+`isEmpty()` is true for `[v..v)`, `(v..v]` and `(v..v)` — the ranges whose
+endpoints meet with at least one side open. A range whose lower endpoint is
+*greater* than its upper endpoint is not a range, and constructing one throws:
+
+```typescript
+NumberRange.closed(5, 1);            // Error: lower endpoint (5) is greater than upper endpoint (1)
+NumberRange.closedOpen(0.5, -0.5);   // Error, same reason
+```
+
+The reason is not tidiness. Such a range contains nothing, but it is not
+`isEmpty()` — its endpoints never met — so it slips past every guard built on
+`isEmpty()`, including the ones inside `RangeMap` that keep a map's `span()`
+honest. Before it was rejected, `map.put(closedOpen(0.5, -0.5), 'x')` gave a map
+that reported a span of `[0.5..-0.5)` and one visible entry while associating a
+value with nothing. Put the endpoints the right way round, or use an empty range
+such as `closedOpen(v, v)` if you mean "nothing".
+
+`NaN` endpoints are a different case and do not throw: an unordered comparison is
+a non-answer, not an inversion, and it propagates as `false` from `contains`,
+`encloses` and friends rather than becoming a construction error.
+
 ### RangeSet
 
 Not currently implemented. This would be a set containing Ranges, where none of the ranges overlap and overlapping ranges are automatically joined.
@@ -213,16 +236,27 @@ release decision itself. The publish/promote step is deliberately outside the
 agent's reach — CI ends at "staged", and promotion requires a human with 2FA.
 
 **What this is not.** It is not a claim that the code is correct. It is a claim
-that it is instrumented and was reviewed: 174 specs across Node, jsdom and
-Chrome, and a 94.90% mutation score. Both are reproducible from this repository
-without trusting anyone — run `npm test` and `npm run test:mutation`. Where the
-changelog says something was "verified", it names the command that verifies it,
-and you should believe the command rather than the sentence.
+that it is instrumented and was reviewed: a spec suite that runs across Node,
+jsdom and Chrome, and a mutation score that measures how much of the logic those
+specs actually catch. Both are reproducible from this repository without trusting
+anyone — run `npm test` and `npm run test:mutation`. This page deliberately
+quotes neither figure: a count written into prose is stale the first time a test
+is added, and a stale number in the one paragraph whose job is "check us" is
+worse than no number. The per-release numbers live in `CHANGELOG.md`, where they
+are a dated record rather than a claim about the present.
 
 **A note on attribution.** The agent's commits carry the maintainer's git
-identity, so `git log` does **not** distinguish them. The 14 commits dated
-2026-11-01 are the agentic work; everything up to and including 2025-02-20 is
-not. If you need to attribute a line of this release to a machine rather than a
+identity, so `git log` does **not** distinguish them. The boundary is a date, not
+a count: everything up to and including 2025-02-20 (0.1.8) is human-authored,
+and the work after that is the agentic work that became 1.0.0. Derive the set
+rather than trusting a number written down here:
+
+```bash
+git log --since=2025-02-21 --oneline   # the agentic commits
+git log --until=2025-02-20 --oneline   # the human-authored history
+```
+
+If you need to attribute a line of this release to a machine rather than a
 person, that is the boundary.
 
 **Why disclose.** Not because a licence requires it and not as a disclaimer.

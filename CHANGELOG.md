@@ -7,11 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2026-11-01
 
 First major release. The breaking changes are the end of ES5 output, deep
-imports being closed off, test artifacts no longer being published, and
-corrected range algebra on empty ranges. The last of those is the one most
-likely to affect you: `intersection()` no longer returns `null` for a
-connected-but-empty result, which flips any `=== null` test on it. See the table
-in the Breaking section. Everything else is additive or tooling.
+imports being closed off, test artifacts no longer being published, corrected
+range algebra on empty ranges, and a constructor that rejects inverted ranges.
+The third of those is the one most likely to affect you: `intersection()` no
+longer returns `null` for a connected-but-empty result, which flips any
+`=== null` test on it. See the table in the Breaking section. Everything else is
+additive or tooling.
 
 ### Breaking
 - **ES5 output dropped.** All build targets now compile to `es2020`. The
@@ -66,6 +67,40 @@ in the Breaking section. Everything else is additive or tooling.
   `true → false` direction: every difference is `false`/`null` becoming
   `true`/a value. Code that was correct on 0.1.8 for ordinary ranges is
   unaffected; what changed is what the library says about degenerate ones.
+- **Constructing an inverted range now throws.** `new NumberRange(1, CLOSED, 0, OPEN)`,
+  `NumberRange.closed(5, 1)`, `NumberRange.closedOpen(0.5, -0.5)` and any other
+  range whose lower endpoint is greater than its upper endpoint raise instead of
+  being built. 0.1.8 accepted them silently.
+
+  The reason this is not merely untidy: an inverted range contains nothing, yet
+  `isEmpty()` returns **false** for it, because `isEmpty()` asks "did the
+  endpoints meet, with at least one side open" and an inverted range never met at
+  all. Every guard this library builds on `isEmpty()` — the write-side guard in
+  `RangeMap.combinedPut`, the read-side filters in `asMapOfRanges` and `span` —
+  therefore lets it straight through, and `map.put(closedOpen(0.5, -0.5), 'x')`
+  produced a map that reported `span() === [0.5..-0.5)` and one visible entry in
+  `asMapOfRanges()` for a map associating a value with nothing. That is a hole
+  through the empty-range invariant by the one input the invariant was written to
+  catch everything else with, and it is invisible to exactly the checks that exist
+  to stop empty ranges causing it.
+
+  **What to check in your code:** any place a range is built from endpoints that
+  come from outside — user input, a parsed file, a subtraction that can go
+  negative. If it could be inverted, it used to be constructible and is now not.
+  That is the intended outcome: the alternative was a range that lies about being
+  empty.
+
+  The rule is on endpoint **values**, not on cut positions, and that distinction
+  is deliberate. Cut order puts an open lower bound above an open upper bound at
+  the same value — which is what makes `(v..v)` empty-but-valid — so a validity
+  check written on cuts would reject `(3..3)` along with the genuine inversions.
+  All four equal-endpoint combinations remain constructible. Unordered endpoints
+  (`NaN`) do not throw either: `NaN > 0` is false, so the documented non-answer
+  keeps propagating as a negative rather than becoming a construction error.
+
+  Not a regression — 0.1.8 behaved identically — but 1.0.0 is the release that
+  made "empty associates with nothing" a stated rule, so the hole is closed here
+  rather than left standing.
 
 ### Added
 - **Generic `Scalar<T>` support.** `Range<T>` and `RangeMap<T, P, R>` now work over
@@ -186,9 +221,14 @@ in the Breaking section. Everything else is additive or tooling.
   `RangeMap` and `NumberRange` without importing them. Both corrected, and the
   example was executed against the packed artifact to confirm it now produces
   exactly the output its own `expect` asserts.
-- **Published tarball: 469 files / 14.2 MB → 55 files / 150 kB.** There was no
-  `files` allowlist, so npm shipped the entire repo minus `.gitignore`: every
-  tsconfig, `stryker.conf.json` and `tsconfig.tsbuildinfo`.
+- **The published tarball is allowlisted; before 1.0.0 it was not.** There was no
+  `files` allowlist, so npm shipped the entire repo minus `.gitignore`: `src/`,
+  every tsconfig, and the `dist/karma` test artifacts. 0.1.8 published
+  **81 files / 662 KiB unpacked** (`npm view range-ts@0.1.8 dist.fileCount
+  dist.unpackedSize`). 1.0.0 ships **54 files / 150 KiB** — `dist/cjs`,
+  `dist/esm`, `dist/types`, README, LICENSE and CHANGELOG, and nothing else. Both
+  figures are reproducible: the command above for the live 0.1.8,
+  `npm pack --dry-run` for this tree.
 - **The release workflow referenced a repository that does not exist**
   (`Github-Actions-Community/merge-release@main`): API 404 on every casing
   variant, `git ls-remote` falls through to a credentials prompt. Replaced with
@@ -215,6 +255,32 @@ in the Breaking section. Everything else is additive or tooling.
   (`bigint | "+INF" | "-INF"`), which produced an unusable
   `Range<bigint> | Range<"+INF"> | Range<"-INF">` at every exact-domain call
   site.
+- **The documented custom-scalar example violated its own contract, and the
+  inverted-range check is what proved it.** The `Scalar<T>` interface requires
+  `compare()` to order the domain's own infinities — "they are values of `T`
+  like any other" — because an unbounded range is built by comparing them. The
+  worked example in `scalar-range.spec.ts` (money as a decimal string) called its
+  `asScaled()` helper straight through, so `M.all()` died with
+  `SyntaxError: Cannot convert <<MIN>> to a BigInt`: the sentinel strings are not
+  money and cannot be scaled. Nothing caught it before, because nothing in the old
+  algebra compared the unbounded sides at construction time; adding the
+  inverted-range check made `M.all()` throw at compile-to-test time on the first
+  run. The example now orders its sentinels and asserts it directly.
+
+  The general lesson is recorded in the example's comment: if a custom scalar ever
+  trips the constructor check on an *unbounded* range, the omission is almost
+  always this one — `compare()` not handling the domain's own infinities.
+- **`finalize-dist.mjs` resolved the dist path through `new URL(...).pathname`,
+  which returns the percent-encoded form.** A checkout under a path containing a
+  space or a non-ASCII character would have produced `%20/...`, every `existsSync`
+  below it would miss, and the build would fail with "expected dist/esm to exist".
+  Now uses `fileURLToPath`. Invisible on the maintainer's machine, which is
+  exactly why it was worth fixing before publishing rather than after.
+- **The release workflow's stage-id extraction no longer falls back to
+  `rows[0]`.** If the name-and-version filter missed, the old code printed some
+  other staged package's id and told the reader to `npm stage approve` it — an
+  instruction that would publish the wrong artifact. A miss now reports no id and
+  dumps the raw `npm stage list` output, which is honest instead of plausible.
 
 ### Quality
 - `npm run test:mutation` added as the scripted entry point for Stryker. The
@@ -227,33 +293,51 @@ in the Breaking section. Everything else is additive or tooling.
   `NaN` for values like `NaN` rather than picking a direction or returning 0.
   This matches what `comparableScalar` already did and what 0.1.8 behaved as,
   but the interface previously promised a strict trichotomy it did not keep.
-- Mutation score 78.9% → 94.9% → **93.71%** (455 killed, 7 timeout, 31 survived
-  of 493). The dip from 94.9% is the cut-order rewrite adding code, not tests
-  getting weaker; the survivors are classified below rather than left as a
-  residue.
-- **All 31 remaining survivors are accounted for**, and none is a gap:
+- Mutation score 78.9% → 94.9% → 93.71% → **93.89%** (469 killed, 7 timeout, 31
+  survived of 507). The dip from 94.9% is the cut-order rewrite adding code, not
+  tests getting weaker; the survivors are classified below rather than left as a
+  residue. The rise back above 93.71% is the inverted-range guard, which shipped
+  with tests that kill every mutant it introduced.
+- **All 31 remaining survivors are accounted for**, and none is a gap. The
+  breakdown below is read out of the mutation report rather than tallied by hand:
+
+  ```bash
+  node -e "const r = require('./reports/mutation/mutation.json');
+    const s = Object.entries(r.files).flatMap(([name, f]) => f.mutants.map(m => ({ name, ...m })));
+    const surv = s.filter(m => m.status === 'Survived');
+    console.log(surv.length);
+    console.log(surv.map(m => m.name + ':' + m.location.start.line).join('\n'))"
+  ```
+
   - 9 are `__esModule` / `"use strict"` boilerplate on line 2 of each compiled
     file — not library logic.
-  - 4 (`intersection`/`span` `>=`→`>` and `<=`→`<` at an exactly-equal cut) are
-    **provably equivalent**: `lowerSide`/`upperSide` are injective, so equal
-    cut-sides imply equal bound types, and picking `other` where the cuts tie
-    yields an identical bound.
-  - 1 (`if (!s.succ)` → `false`) is absorbed by the `try`/`catch` in `step`,
-    which turns the missing-`succ` `TypeError` into `null` and so into the same
-    `false` answer.
-  - 1 (`const toDelete = { toDeleteId: Math.random() }` → `{}`) is equivalent:
-    `remove` compares by object identity, and the field is decorative.
-  - 3 (`combinedPut`'s empty-range guard, and the `intersection(...)?.isEmpty()`
-    guard) survive because the invariant is enforced twice over. `fromRangeValues`
-    is `private static`, so with the write-side guard no empty range can enter
-    `rangeValues` through any public path; disabling either brace alone still
-    leaves the other holding. Kept deliberately — the write-side guard is the one
-    that stops the bad state from ever existing.
-  - 13 are the read-side empty filters in `asMapOfRanges` / `asMapOfValues` /
-    `span` and their `.filter()` chains, redundant for the same reason. They are
-    cheap defence-in-depth against a future write path that forgets the guard.
-  - 3 are error-message fragments in the new cross-scalar `throw` (control flow
-    is unchanged; only the prose differs).
+  - 4 (`intersection`/`span` `>=`→`>` and `<=`→`<` at an exactly-equal cut;
+    `range.js` L86, L87, L128, L129) are **provably equivalent**: `lowerSide`/
+    `upperSide` are injective, so equal cut-sides imply equal bound types, and
+    picking `other` where the cuts tie yields an identical bound.
+  - 1 (`if (!s.succ)` → `false`, `range.js` L99) is absorbed by the `try`/`catch`
+    in `step`, which turns the missing-`succ` `TypeError` into `null` and so into
+    the same `false` answer.
+  - 1 (`const toDelete = { toDeleteId: Math.random() }` → `{}`, `range-map.js`
+    L100) is equivalent: `remove` compares by object identity, and the field is
+    decorative.
+  - 3 are error-message fragments in the new cross-scalar `throw` (`range.js`
+    L66, L68, L69). Control flow is unchanged; only the prose differs. (The
+    inverted-range message is NOT in this group — it is asserted verbatim, so all
+    of its fragments are killed.)
+  - 13 are the empty-range guards and read-side filters in `range-map.js`, all
+    redundant with each other because the invariant is enforced twice over.
+    `fromRangeValues` is `private static`, so with the write-side guard no empty
+    range can enter `rangeValues` through any public path; disabling either brace
+    alone still leaves the other holding. Split:
+    - 9 write-side guards — `subRangeMap` L62 (2), `remove` L97 (2),
+      `combinedPut` L107 (2), and the `intersection(...)?.isEmpty()` guard L126
+      (3: the condition, the optional chain, and the block).
+    - 4 read-side filters — `asMapOfRanges` L37, `asMapOfValues` L47, `span`
+      L87, and the `[rangeBefore, rangeAfter].filter(a => !!a)` chain L132.
+    Kept deliberately — the write-side guard is the one that stops the bad state
+    from ever existing; the read-side filters are cheap defence-in-depth against a
+    future write path that forgets it.
 - **Two survivors that were *not* equivalent are now killed.** Removing the
   `nxt !== null` guard in `isAdjacentTo` was uncaught until the zero-endpoint
   case was tested: `bigintScalar.compare(null, 0n)` returns `0` — "equal" —
@@ -262,7 +346,7 @@ in the Breaking section. Everything else is additive or tooling.
   positive adjacency**. The existing test used a `5` endpoint, where
   `compare(null, 5n)` is `-1` and the answer happens to stay correct. All 14
   mutants on those two lines now die, including the null-guard removal.
-- 207 specs passing across node, jsdom and Chrome (was 174; +33 for cut order,
+- 223 specs passing across node, jsdom and Chrome (was 174; +49 for cut order,
   empty-range `RangeMap` semantics, the cross-scalar guard, the throwing-`succ`
   cases and the sentinel pins).
 - **Published artifact verified against 0.1.8 by installing the packed tarball
@@ -273,15 +357,16 @@ in the Breaking section. Everything else is additive or tooling.
     `contains`, and `toString` rendering (`[1..5]`, `[0..+∞)`, `(-∞..+∞)`).
   - Node ESM `import` and dynamic `import()` both resolve and work.
   - `dist/esm` contains no CJS markers; `dist/cjs` is proper CJS.
-  - **Backwards compatibility confirmed at the type level** — *this claim was
-    WRONG as originally written, and is left visible rather than quietly
-    deleted.* It read: "the 0.1.8 usage pattern `new RangeMap<string>()` +
-    `NumberRange.closedOpen(...)` typechecks clean against 1.0.0 under
-    `strict` with `skipLibCheck: false`." The pattern tested built the ranges
-    but never annotated the values that come back. Re-running the same consumer
-    file against both versions: **0.1.8 PASS, 1.0.0 FAIL** on all four
-    range-returning methods. See the `Fixed` entry above for the cause and the
-    fix; that same consumer file now typechecks clean against 1.0.0.
+  - **Backwards compatibility confirmed at the type level.** The 0.1.8 usage
+    pattern — `new RangeMap<string>()` plus `NumberRange.closedOpen(...)`, with
+    the returned values annotated (`const s: NumberRange = m.span()`,
+    `Map<NumberRange, string>` from `asMapOfRanges`,
+    `[NumberRange, string] | null` from `getEntry`) — typechecks clean against
+    1.0.0 under `strict` with `skipLibCheck: false`. Annotating what comes back is
+    what makes the check mean anything: building the ranges without naming the
+    return types passes on both versions and proves nothing. See the `Fixed` entry
+    above for the return-type widening this caught and how `DefaultRange<P>` closes
+    it.
   - The new exact-domain path works in the shipped artifact: a `bigint` range
     correctly distinguishes `2^53 + 1` from `2^53`, which a JS `number`
     cannot. This is the feature's whole reason to exist and it was verified

@@ -46,8 +46,12 @@ and does not protect against.
 
 ### Package contents
 
-- **`files` allowlist** — the published tarball is 54 files. Before this, publish
-  shipped 469 files / 14.2 MB including every tsconfig.
+- **`files` allowlist** — the tarball ships only `dist/cjs`, `dist/esm`,
+  `dist/types`, README, LICENSE and CHANGELOG. Before it, publish shipped the repo
+  minus `.gitignore`: `src/`, every tsconfig, and the `dist/karma` test artifacts
+  (0.1.8: 81 files / 662 KiB unpacked). Verify rather than trusting this file —
+  `npm pack --dry-run` for what this tree produces, `npm view range-ts
+  dist.fileCount` for what is live.
 - **`exports` map blocks deep imports** — only `.` and `./package.json` resolve.
   This limits what a compromised *consumer* of the package can reach into, and
   keeps internals reorganisable.

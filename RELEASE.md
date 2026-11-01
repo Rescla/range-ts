@@ -169,9 +169,10 @@ If the package is still only **staged**, rollback is trivial: `npm stage reject`
   prebuilt binaries needing no install script.
 - **The tarball is allowlisted** by `files` in `package.json`:
   `dist/cjs`, `dist/esm`, `dist/types`, README, LICENSE, CHANGELOG, with
-  `!**/*.tsbuildinfo` negated out. Before the allowlist, publish shipped
-  469 files / 14.2 MB including every tsconfig. Check `dist.fileCount` rather
-  than trusting it held.
+  `!**/*.tsbuildinfo` negated out. Before the allowlist, publish shipped `src/`,
+  every tsconfig and the `dist/karma` test artifacts (0.1.8: 81 files / 662 KiB
+  unpacked). Check `npm pack --dry-run` against `npm view range-ts dist.fileCount`
+  rather than trusting any count quoted in a doc.
   Note that `.npmignore` does **not** work here: a `files` allowlist overrides
   it, so an `.npmignore` containing `*.tsbuildinfo` was tried and had no effect
   at all. The exclusion has to be a `!` pattern inside `files` itself. The

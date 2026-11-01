@@ -252,17 +252,32 @@ describe("Range<T> over an exact scalar", () => {
       // string. Nothing in range-ts knows about it, yet the full algebra works.
       type Cents = string;
       const asScaled = (s: string): bigint => BigInt(s.replace(".", "").padStart(3, "0"));
+      const MIN = "<<MIN>>";
+      const MAX = ">>MAX<<";
 
       const moneyScalar = {
         compare: (a: Cents, b: Cents) => {
+          // The Scalar contract requires compare() to order the domain's OWN
+          // infinities — they are values of T like any other, and an unbounded
+          // range is built by comparing them. This example used to call asScaled()
+          // straight through, so Range.all() died with "Cannot convert <<MIN>> to
+          // a BigInt": the sentinels are not money and cannot be scaled. The bug
+          // sat here unnoticed because nothing in the old algebra compared the
+          // unbounded sides at construction time; the inverted-range check in the
+          // Range constructor is what surfaced it. If a custom scalar ever trips
+          // that check on an unbounded range, this is the shape of the omission.
+          if (a === MIN) return b === MIN ? 0 : -1;
+          if (a === MAX) return b === MAX ? 0 : 1;
+          if (b === MIN) return 1;
+          if (b === MAX) return -1;
           const av = asScaled(a);
           const bv = asScaled(b);
           return av < bv ? -1 : av > bv ? 1 : 0;
         },
-        minusInfinity: "<<MIN>>" as Cents,
-        plusInfinity: ">>MAX<<" as Cents,
-        isPlusInfinity: (a: Cents) => a === ">>MAX<<",
-        isMinusInfinity: (a: Cents) => a === "<<MIN>>",
+        minusInfinity: MIN as Cents,
+        plusInfinity: MAX as Cents,
+        isPlusInfinity: (a: Cents) => a === MAX,
+        isMinusInfinity: (a: Cents) => a === MIN,
         format: (a: Cents) => `€${a}`,
       };
 
@@ -275,6 +290,11 @@ describe("Range<T> over an exact scalar", () => {
       expect(price.toString()).toBe("[€10.00..€25.50)");
       expect(M.all().toString()).toBe("(€<<MIN>>..€>>MAX<<)");
       expect(M.atLeast("5.00").isBoundedAbove()).toBeFalse();
+      // The sentinels must order against real points, or `all()` cannot exist.
+      expect(moneyScalar.compare(MIN, "0.01")).toBe(-1);
+      expect(moneyScalar.compare("0.01", MAX)).toBe(-1);
+      expect(moneyScalar.compare(MAX, "9999.99")).toBe(1);
+      expect(moneyScalar.compare(MIN, MAX)).toBe(-1);
     });
   });
 });
