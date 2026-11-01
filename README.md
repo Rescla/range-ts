@@ -1,7 +1,7 @@
 # RangeTs
 
 ![CI](https://github.com/Rescla/range-ts/workflows/CI/badge.svg)
-[![Test Coverage](https://api.codeclimate.com/v1/badges/a98503501886a6965e4a/test_coverage)](https://codeclimate.com/github/Rescla/range-ts/test_coverage)
+[![npm version](https://badge.fury.io/js/range-ts.svg)](https://badge.fury.io/js/range-ts)
 
 Typescript ranges based on Guava RangeMap.
 

@@ -1,28 +1,18 @@
-# This is a basic workflow to help you get started with Actions
-
+# CI for range-ts: install, build, test across node/jsdom/chrome.
 name: CI
 
-# Controls when the action will run.
 on:
-  # Triggers the workflow on push or pull request events but only for the master branch
   push:
     branches: [master]
   pull_request:
     branches: [master]
-
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
   build:
-    # The type of runner that the job will run on
     runs-on: ubuntu-latest
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v7
 
       # Pin the toolchain. Without this the job uses whatever Node/npm the runner
@@ -36,24 +26,41 @@ jobs:
         with:
           node-version: '22'
 
+      # NOTE: do NOT add --omit=optional here.
+      #
+      # TypeScript 7 is the Go rewrite: the compiler itself is not JS, it ships
+      # as a platform-specific optionalDependency (@typescript/typescript-linux-x64
+      # and friends). Omitting optionals deletes the compiler and the build dies
+      # with:
+      #   Error: Unable to resolve @typescript/typescript-linux-x64.
+      #     Either your platform is unsupported, or you are missing the package on disk.
+      #
+      # This is not in tension with the repo's ignore-scripts=true: those native
+      # packages are prebuilt binaries that need no install script. Hardening the
+      # install and skipping the compiler are different switches.
       - name: Npm ci
-        run: npm ci --omit=optional
+        run: npm ci
 
-      - name: Codeclimate before build
-        env:
-          CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
-        run: |
-          curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
-          chmod +x ./cc-test-reporter
-          ./cc-test-reporter before-build
-
-      # Runs a single command using the runners shell
       - name: Run build
         run: npm run build
 
-      - name: Codeclimate after build
-        env: # Or as an environment variable
-          CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
-        run: |
-          ./cc-test-reporter format-coverage .tmp/coverage/lcov.info -o .tmp/coverage/codeclimate.json -t lcov
-          ./cc-test-reporter upload-coverage -i .tmp/coverage/codeclimate.json
+      # The Code Climate coverage steps that used to sit here are gone, and not
+      # because the secret was missing. The Code Climate test reporter is
+      # discontinued: codeclimate/test-reporter now redirects to
+      # qltysh-archive/test-reporter (archived, last pushed 2024-07-08), and
+      # every download URL 404s:
+      #   .../test-reporter-latest-linux-amd64  -> 404
+      #   .../test-reporter-latest-linux-386    -> 404
+      #   .../test-reporter-latest-darwin-amd64 -> 404
+      #
+      # The old step also had a failure mode worth naming, because it is a common
+      # one: `curl -L <url> > ./cc-test-reporter` without `-f` writes the
+      # response body whatever it is, so the 404 HTML page landed in a file that
+      # was then chmod +x and executed as a shell script. The step failed with a
+      # bash syntax error on `<!DOCTYPE html>` several commands away from the
+      # actual problem. If a workflow ever downloads a binary again, use
+      # `curl -f` so an HTTP error fails at the download instead of turning into
+      # a corrupt executable.
+      #
+      # Coverage is still produced locally by karma-coverage-istanbul and Stryker;
+      # it just is not uploaded to a third-party dashboard any more.
