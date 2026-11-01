@@ -67,6 +67,19 @@ jobs:
 
       - name: Stage the package
         if: ${{ !inputs.dry_run }}
+        env:
+          # The secret is NPM_AUTH_TOKEN; the environment variable npm actually
+          # reads is NODE_AUTH_TOKEN. They are different names and both are needed.
+          #
+          # setup-node's registry-url writes ~/.npmrc containing
+          #   //registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}
+          # which is a REFERENCE resolved when npm runs, not a value baked in at
+          # setup time. So the env must be present on this step. Without it the
+          # reference expands empty and npm reports:
+          #   "Unable to authenticate, your authentication token seems to be invalid."
+          # That is what broke the previous two attempts: the env was dropped in
+          # the rewrite from `npm publish` to `npm stage publish`.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
         run: |
           # NOTE: no package-spec argument. `npm stage publish range-ts` resolves
           # the name against the REGISTRY, not the working directory, and fails
@@ -76,6 +89,9 @@ jobs:
 
       - name: Report the stage id and the approve command
         if: ${{ !inputs.dry_run }}
+        env:
+          # `npm stage list` hits GET /-/stage and 401s without a token.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
           npm stage list "range-ts@$VERSION" --json > /tmp/staged.json || true
