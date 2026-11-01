@@ -5,6 +5,10 @@
 
 Typescript ranges based on Guava RangeMap.
 
+> **1.0.0 is an agentic release.** 0.1.8 was the last release written entirely by
+> a human. See [About this release — AI disclosure](#about-this-release--ai-disclosure)
+> for what that means and how to check it yourself.
+
 The library is available as an npm package. To install the package run:
 
 ```
@@ -184,4 +188,47 @@ change. Import from `"range-ts"`.
 The ESM build is genuine ES modules with explicit file extensions and a
 `{"type":"module"}` marker, so it loads in Node directly and tree-shakes in
 bundlers.
+
+## About this release — AI disclosure
+
+**0.1.8 (published 2025-02-20) was the last human-authored release.** The
+library from its initial commit through 0.1.8 was written by Marc Fokkert across
+2021–2025.
+
+**1.0.0 was produced agentically**: written by an AI coding agent ([pi](https://pi.dev))
+working to a human maintainer's direction. This section exists so you can weigh
+that rather than find out later.
+
+**What the agent did.** The TypeScript 5 → 7 migration and the ES5 drop it
+forced; the generic `Scalar<T>` refactor and the exact-domain (`bigint`) work;
+the packaging changes (exports map, module-type markers, making `dist/esm`
+loadable by Node's ESM loader); the test-infrastructure rebuild (three
+environments, Stryker mutation testing); the CI and release-workflow rework; and
+most of the prose in `CHANGELOG.md` and `RELEASE.md`.
+
+**What the human did.** Set the scope and decided which breaking changes were
+acceptable; reviewed the agent's output, including a second independent review
+pass run against the *packed tarball* rather than the source tree; and owns the
+release decision itself. The publish/promote step is deliberately outside the
+agent's reach — CI ends at "staged", and promotion requires a human with 2FA.
+
+**What this is not.** It is not a claim that the code is correct. It is a claim
+that it is instrumented and was reviewed: 174 specs across Node, jsdom and
+Chrome, and a 94.90% mutation score. Both are reproducible from this repository
+without trusting anyone — run `npm test` and `npm run test:mutation`. Where the
+changelog says something was "verified", it names the command that verifies it,
+and you should believe the command rather than the sentence.
+
+**A note on attribution.** The agent's commits carry the maintainer's git
+identity, so `git log` does **not** distinguish them. The 14 commits dated
+2026-11-01 are the agentic work; everything up to and including 2025-02-20 is
+not. If you need to attribute a line of this release to a machine rather than a
+person, that is the boundary.
+
+**Why disclose.** Not because a licence requires it and not as a disclaimer.
+An AI-written range library in someone's dependency tree is a fact they would
+want, and it is the kind of fact that is easy to omit by accident and harder to
+recover later. It also sets the expectation that the review burden shifts: less
+"the author wrote this, it's probably fine", more "here is instrumentation, check
+it".
 
