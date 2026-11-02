@@ -60,12 +60,26 @@ function inputs(NumberRange, n) {
  *
  *  - Sequential append onto a sorted array splices at the end, which is O(1),
  *    so the build is O(n log n) overall -> p ~ 1.1, gated at 1.35.
- *  - Random insert pays a memmove per put. That is O(n) per put and O(n^2)
- *    in the limit, but the memmove is native and roughly 50x cheaper per
- *    element than the JS-level scan it replaces; measured ~1.4. Gated at
- *    1.75 — honest about what this structure is, tight enough that the old
- *    scan-and-rebuild (measured 1.96-2.01) fails hard.
- *  - Lookups are binary searches: p ~ 1.0, gated at 1.25.
+ *  - Random insert pays a memmove per put: O(n) per put, O(n^2) to build.
+ *    The native memmove is ~50x cheaper per element than the JS-level scan
+ *    it replaced, so the constant is small — but the CLASS is still
+ *    quadratic, and that is why these rows are gated at 2.05 now.
+ *
+ *    RETRACTED: the previous text gated this at 1.75 as "tight enough that
+ *    the old scan-and-rebuild (measured 1.96-2.01) fails hard". It fired
+ *    on unchanged code on the CI runner, which read 1.77. The exponent on
+ *    this workload is a blend of CPU-bound JS work and memory-bandwidth-bound
+ *    memmove, and the blend weight moves with the machine: ~1.45 on the dev
+ *    box, 1.77 on the runner, against a 0.25 margin. And more fundamentally,
+ *    an exponent cannot separate "quadratic with a tiny constant (fine)"
+ *    from "quadratic with a big constant (not fine)" — that is a
+ *    constant-factor question and this instrument cannot answer it.
+ *
+ *    So: the ceiling catches worse-than-quadratic; normalised drift catches
+ *    the scan-and-rebuild, which is ~15x in absolute terms and reads ~15n
+ *    against a read-derived runner factor.
+ *  - Lookups are binary searches: p ~ 1.0, gated at 1.25. Single-class, so
+ *    the exponent really is machine-independent here (1.02 dev box, 1.09 CI).
  */
 export function scenarios(mod) {
   const { RangeMap, NumberRange } = mod;
@@ -87,7 +101,8 @@ export function scenarios(mod) {
     },
     {
       name: "putCoalescing (random order)",
-      maxExponent: 1.75,
+      // Class ceiling, not a tight gate — see the retraction in the header.
+      maxExponent: 2.05,
       make: () => new RangeMap(),
       op: (m, n) => {
         for (const r of inputs(NumberRange, n).randomA) m.putCoalescing(r, 1);
@@ -103,7 +118,11 @@ export function scenarios(mod) {
     },
     {
       name: "put (random order)",
-      maxExponent: 1.75,
+      // Class ceiling, not a tight gate. This is the row that failed CI at
+      // 1.77 against the old 1.75 gate; the true class is quadratic and the
+      // measured exponent is machine-dependent. Constant-factor regressions
+      // on this path are caught by normalised drift, not here.
+      maxExponent: 2.05,
       make: () => new RangeMap(),
       op: (m, n) => {
         for (const r of inputs(NumberRange, n).randomB) m.put(r, 1);
@@ -112,6 +131,9 @@ export function scenarios(mod) {
     {
       name: "get hit",
       maxExponent: 1.25,
+      // Pure read: no write-path change can slow it, which is what makes it
+      // usable as a runner-factor reference (see Report.render).
+      reference: true,
       make: mkSeq,
       op: (m, n) => {
         let acc = 0;
@@ -124,6 +146,7 @@ export function scenarios(mod) {
     {
       name: "get miss (in the gaps)",
       maxExponent: 1.25,
+      reference: true,
       make: mkSeq,
       op: (m, n) => {
         let acc = 0;
@@ -236,6 +259,7 @@ export function scenarios(mod) {
     {
       name: "asMapOfRanges (full materialise)",
       maxExponent: 1.35,
+      reference: true,
       make: mkSeq,
       op: (m, n) => m.asMapOfRanges(),
     },
@@ -248,6 +272,7 @@ export function scenarios(mod) {
       // to the whole-array-filter version it replaced.
       name: "span (n calls)",
       maxExponent: 1.35,
+      reference: true,
       make: mkSeq,
       op: (m, n) => {
         for (let i = 0; i < n; i++) m.span();

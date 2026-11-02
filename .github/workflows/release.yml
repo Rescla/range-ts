@@ -29,7 +29,11 @@ on:
 
 jobs:
   stage:
-    runs-on: ubuntu-latest
+    # Pinned to match main.yml — `ubuntu-latest` is mid-migration from 24.04
+    # to 26.04 (GitHub changelog 2026-09-17). A job that mints a package
+    # attestation should not be running on an image that can change under it
+    # without a commit. See main.yml for the full rationale.
+    runs-on: ubuntu-24.04
     permissions:
       # Least privilege: this job publishes nothing and pushes no refs. It only
       # reads the repo and mints an attestation. Promotion, tagging and the

@@ -10,7 +10,24 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # PINNED, deliberately, and not for the usual "latest is unstable" reason.
+    # GitHub's changelog of 2026-09-17 ("Ubuntu 26 generally available and
+    # latest migration") moves the `ubuntu-latest` label from 24.04 to 26.04
+    # gradually between 2026-10-19 and 2026-11-19: "During this window,
+    # workflows that use ubuntu-latest will automatically move to Ubuntu
+    # 26.04." We are inside that window now, so `ubuntu-latest` currently
+    # means "whichever of two operating systems the rollout has reached".
+    #
+    # For most jobs that is a nuisance. For the bench scaling gate in this job
+    # it is a correctness problem: an OS migration changes the kernel, glibc,
+    # CPU allocation and memory behaviour, which is precisely what a timing
+    # measurement is sensitive to. A gate that can move because the floor
+    # changed under it, with no commit to point at, is a gate nobody can debug.
+    #
+    # Moving to 26.04 should be a deliberate change with the bench re-run
+    # against it, not something that happens on a Tuesday because GitHub
+    # finished a rollout. Change this line to make it so.
+    runs-on: ubuntu-24.04
 
     # Explicit least privilege. Without a `permissions:` key this job inherits
     # the repository/org default, and the GitHub default for new repos has been
@@ -94,14 +111,37 @@ jobs:
       # from milliseconds to fifteen seconds without failing a single
       # assertion, and nothing caught it.
       #
-      # The gate is the scaling EXPONENT, which is dimensionless: a linear
-      # operation reads ~1.0 on a shared Xeon and on a laptop alike, so a
-      # slow runner shows up as a slow step, not as a red build. Absolute
-      # times are compared against bench/baseline.json for drift only.
+      # The gate itself, tested with synthetic numbers before the gate is run.
+      # Deterministic and instant, so it belongs ahead of the timing-based
+      # step: if the gate logic is wrong, this says so in milliseconds instead
+      # of the real bench taking four minutes to produce an unfalsifiable red.
+      - name: Gate self-test
+        run: npm run bench:selftest
+
+      # The gate is the scaling EXPONENT, which is dimensionless — for a
+      # single-complexity-class workload. A pure binary search reads ~1.0 on a
+      # shared Xeon and on a laptop alike (measured: 1.02 and 1.09), so a
+      # slow runner shows up as a slow step, not as a red build.
+      #
+      # It is NOT machine-independent for a mixed workload, and the first CI
+      # run on this tree proved it: `put (random order)` blends CPU-bound JS
+      # work with memory-bandwidth-bound memmove, read 1.45 on the dev box
+      # and 1.77 on the runner, and failed a 1.75 gate on unchanged code.
+      # Those rows are now gated at their class ceiling and the constant is
+      # guarded by normalised drift instead.
+      #
+      # Drift is reported as `rawx/normalisedn`. The normalised value divides
+      # out the runner factor — the median drift of the pure-read rows, which
+      # no write-path change can slow — so a uniformly slower machine cancels
+      # instead of failing every row. The first CI run of this tree printed
+      # 1.27x-2.02x on all twelve rows against a baseline recorded on a
+      # different machine; normalised, the worst row was 1.51n.
       #
       # If this step goes red, read the row: `FAIL scaling` is a complexity
-      # regression (real), `FAIL drift` is a >3x constant regression
-      # (also real). Neither is "the runner was slow" — that is what the
-      # paired-interleaved measurement in bench/harness.mjs is for.
+      # regression (real). `FAIL drift` is a per-case constant regression
+      # against the read-derived runner factor — also real, and specifically
+      # NOT "the runner was slow", because that is what the normalisation is
+      # for. If the drift gate prints UNAVAILABLE, the reference rows had no
+      # baseline and nothing was gated on drift at all.
       - name: Bench scaling gate
         run: npm run bench:check

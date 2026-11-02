@@ -238,8 +238,43 @@ full reasoning in [docs/1.0.0-notes.md](docs/1.0.0-notes.md).
   step in CI. Three consecutive green runs after the change; the residual
   wobble on the allocation-heavy interior-remove case is documented rather
   than smoothed over. See
-  [docs/1.0.0-notes.md](docs/1.0.0-notes.md#benchmarking-notes--four-things-this-harness-got-wrong-before-it-was-right).
-- **`bench:check` now refuses to run at a size other than the baseline's.**
+  [docs/1.0.0-notes.md](docs/1.0.0-notes.md#benchmarking-notes--five-things-this-harness-got-wrong-before-it-was-right).
+- **The bench gate no longer gates the hardware.** The first CI run failed
+  `put (random order)` at O(n^1.77) against a 1.75 gate on unchanged code,
+  with _every_ row 1.27×–2.02× slower than the dev-box baseline. Two causes,
+  both fixed:
+  - **Drift is normalised.** Each row’s ratio is divided by a **runner
+    factor** — the median drift of the four pure-read rows, which no
+    write-path change can slow. A uniformly slower machine cancels; a
+    per-case regression still stands out. On the failing CI run the runner
+    factor was 1.35× and the worst row normalised to 1.50n. The reference
+    set is the load-bearing part: taking the median over all rows would let a
+    change that slows the whole write path drag the factor up with it and
+    normalise itself away.
+  - **Mixed-class rows are gated at their class ceiling, not their
+    measurement.** A random-order build is genuinely quadratic — each insert
+    shifts ~n/2 entries — and its exponent blends CPU-bound JS work with
+    memory-bandwidth-bound `memmove`, so the blend weight moves with the
+    machine: 1.45 on the dev box, 1.77 on the runner, against a 0.25 margin.
+    More fundamentally, an exponent cannot separate “quadratic with a tiny
+    constant (fine)” from “quadratic with a big constant (not fine)”. Those
+    two rows now gate at 2.05 — worse-than-class — and the constant is
+    guarded by normalised drift, where the old scan-and-rebuild would read
+    ~15n.
+- **`npm run bench:selftest`** (a CI step, instant) feeds the gate synthetic
+  numbers whose machine properties are known and asserts what it concludes:
+  a uniform 1.45× slowdown fails nothing; a 2.27n per-case regression is
+  caught; too few reference rows reports the drift gate **UNAVAILABLE**
+  rather than silently gating on the raw ratio; and the exact CI table that
+  failed is replayed and must pass.
+- **Runner image pinned to `ubuntu-24.04` in all three workflows.** GitHub is
+  migrating `ubuntu-latest` from 24.04 to 26.04 between 2026-10-19 and
+  2026-11-19 (GitHub changelog, 2026-09-17), so during that window
+  `ubuntu-latest` resolves to whichever of two operating systems the rollout
+  happens to have reached — an OS change underneath a timing gate, with no
+  commit to point at. Moving to 26.04 should be a deliberate change with the
+  bench re-run against it, not a Tuesday surprise.
+- **`bench:check` refuses to run at a size other than the baseline’s.**
   Both gates are calibrated at one n. Running at n=40000 against a 20000
   baseline reported 4 failures, 3 of them pure size mismatch — twice the work
   reads ~2× “drift”, which is expected cost, not a regression. A size

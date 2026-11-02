@@ -137,6 +137,9 @@ for (const sc of scenarios(mod)) {
     scaling: s,
     maxExponent: sc.maxExponent,
     maxRatioVsBaseline: sc.maxRatioVsBaseline ?? 3.0,
+    // Pure-read rows carry `reference: true` in cases.mjs. They are what the
+    // runner factor is computed from -- see Report.render.
+    reference: sc.reference === true,
   });
   fresh[sc.name] = { smallMs: s.smallMs, largeMs: s.largeMs, exponent: s.exponent };
 }

@@ -11,20 +11,43 @@
  *
  *   time(2n) / time(n) = 2^p     =>  p = log2(ratio)
  *
- * p is dimensionless: it does not care whether the machine is fast or slow,
- * whether the timer is nanoseconds or milliseconds, or whether the box is
- * shared with three other jobs. A linear operation reads p ~= 1.0 on a
- * Xeon and on a laptop. A quadratic one reads p ~= 2.0 everywhere. That is
- * the property worth asserting.
+ * p is dimensionless, and for a SINGLE-COMPLEXITY-CLASS workload that means
+ * what it looks like it means: a pure binary search reads p ~= 1.0 on a Xeon
+ * and on a laptop (measured across machines here: get hit 1.02 and 1.09).
+ * A quadratic one reads p ~= 2.0 everywhere. That is the property worth
+ * asserting, and for those rows it holds.
  *
- * Absolute times ARE recorded, but only against a deliberately loose
- * tolerance, to catch "still linear, just 10x slower for some reason" that
- * an exponent check alone would miss.
+ * IT IS NOT MACHINE-INDEPENDENT FOR A MIXED WORKLOAD, and that is not a
+ * nitpick -- it is what broke the first CI run. A case that interleaves a
+ * native memmove (memory-bandwidth-bound) with JS-level work (CPU-bound)
+ * measures a BLEND of the two classes, and the blend weight depends on the
+ * machine's memory-to-CPU cost ratio. `put (random order)` reads ~1.45 on
+ * the dev box and 1.77 on the GitHub runner against a gate of 1.75. Worse,
+ * a random-order build is *genuinely* quadratic -- each insert shifts ~n/2
+ * entries -- so no exponent can separate "quadratic with a tiny constant
+ * (fine)" from "quadratic with a big constant (not fine)". That is a
+ * constant-factor question and the exponent is structurally the wrong
+ * instrument for it. Rows like that are gated at their theoretical class
+ * ceiling and the constant is guarded by normalised drift instead.
+ *
+ * Absolute times ARE recorded, but as a ratio normalised against a runner
+ * factor (see `Report.render`) so that a slower machine cancels out instead
+ * of failing the build. The header of this file used to claim a slow CI box
+ * could not turn a correct build red; the first CI run on this tree proved
+ * that wrong, and the runner factor is the fix.
  *
  * Inputs are generated from a seeded PRNG (see `rng()`), so two runs on the
  * same machine see the same data and are comparable. Math.random() would make
  * every run a different workload and the numbers meaningless side by side.
  */
+
+/**
+ * How many reference-row drifts are needed before a runner factor is
+ * trusted. Four keeps the median from riding on any single row while still
+ * being reachable; below it the drift gate reports itself unavailable
+ * rather than falling back to a number that would gate the hardware.
+ */
+export const MIN_REFERENCE_DRIFTS = 4;
 
 /** Deterministic PRNG (mulberry32). Same seed => same sequence, every run. */
 export function rng(seed = 0x5eed) {
@@ -169,23 +192,43 @@ export class Report {
     return row;
   }
 
-  /** Print an aligned table and return the list of failures. */
+  /**
+   * Print an aligned table and return the list of failures.
+   *
+   * THE RUNNER FACTOR, and why the drift gate needs one.
+   *
+   * A baseline recorded on one machine compared against a run on another is
+   * not a regression measurement. The first CI run of the current tree came
+   * in at 1.27x - 2.02x on EVERY row, median ~1.51x, with no change that
+   * could slow reads and writes alike: that is the GitHub runner being
+   * slower than the dev box that recorded the baseline. Gating on the raw
+   * ratio gates the hardware, not the code.
+   *
+   * So each row's drift is divided by a RUNNER FACTOR: the median drift of
+   * the rows marked `reference` -- pure reads, which no write-path change
+   * can slow. A uniformly slower runner cancels out; a per-case regression
+   * still stands out. On that same CI run the reference median was 1.34x,
+   * which puts every write row between 0.94n and 1.51n, while a genuine 2x
+   * write-path regression would still read ~2.0n.
+   *
+   * The reference set is the load-bearing part. Taking the median over ALL
+   * rows would let a change that slows the whole write path drag the factor
+   * up with it and normalise itself away. Reads are the fixed point exactly
+   * because the thing under test cannot touch them.
+   *
+   * With too few reference drifts to form an honest factor the drift gate is
+   * reported UNAVAILABLE rather than silently falling back to the raw
+   * machine-dependent ratio. A gate that quietly changes what it measures is
+   * worse than no gate.
+   */
   render(baseline) {
     const failures = [];
     const baseN = baseline?.smallN ?? null;
     const w = Math.max(28, ...this.rows.map((r) => r.name.length));
-    console.log(
-      "measurement".padEnd(w) +
-        "n".padStart(12) +
-        "ms".padStart(10) +
-        "  exponent".padStart(11) +
-        "  max".padStart(7) +
-        "  vs baseline".padStart(14) +
-        "  verdict"
-    );
-    console.log("-".repeat(w + 62));
 
-    for (const r of this.rows) {
+    // Pass 1: raw drift per row. Normalisation happens against the whole
+    // table, so it cannot be done row-by-row.
+    const measured = this.rows.map((r) => {
       // The baseline file nests the rows under `measurements` (see run.mjs's
       // --update-baseline writer). Reading them off the top level returned
       // undefined for every row, so `drift` was always null, the
@@ -201,16 +244,47 @@ export class Report {
       // so a direct caller cannot get a confident-looking wrong number.
       const sizeMismatch = baseN !== null && r.scaling.smallN !== baseN;
       const drift = !sizeMismatch && base ? r.scaling.smallMs / base.smallMs : null;
+      return { r, drift, sizeMismatch };
+    });
+
+    const refDrifts = measured
+      .filter((m) => m.r.reference && Number.isFinite(m.drift))
+      .map((m) => m.drift);
+    const runnerFactor =
+      refDrifts.length >= MIN_REFERENCE_DRIFTS ? lowQuantile(refDrifts, 0.5) : null;
+
+    console.log(
+      "measurement".padEnd(w) +
+        "n".padStart(12) +
+        "ms".padStart(10) +
+        "  exponent".padStart(11) +
+        "  max".padStart(7) +
+        "  vs baseline".padStart(16) +
+        "  verdict"
+    );
+    console.log("-".repeat(w + 64));
+
+    for (const { r, drift, sizeMismatch } of measured) {
+      const norm = runnerFactor && Number.isFinite(drift) ? drift / runnerFactor : null;
       const expBad = r.scaling.exponent > r.maxExponent;
-      const driftBad = r.maxRatioVsBaseline && drift && drift > r.maxRatioVsBaseline;
+      const driftBad = runnerFactor !== null && r.maxRatioVsBaseline && norm > r.maxRatioVsBaseline;
       const verdict = expBad
         ? `FAIL scaling O(n^${r.scaling.exponent.toFixed(2)}) > O(n^${r.maxExponent})`
         : driftBad
-          ? `FAIL drift ${drift.toFixed(1)}x > ${r.maxRatioVsBaseline}x`
+          ? `FAIL drift ${norm.toFixed(2)}n > ${r.maxRatioVsBaseline}n`
           : "ok";
       if (expBad || driftBad) failures.push(r);
 
       const msFmt = (v) => (v < 1 ? v.toFixed(3) : v.toFixed(1));
+      // `x` = raw ratio against the baseline; `n` = the same ratio with the
+      // runner factor divided out. The gate reads the `n` value.
+      const driftCell = sizeMismatch
+        ? `n/a@${baseN}`
+        : !Number.isFinite(drift)
+          ? "-"
+          : norm === null
+            ? `${drift.toFixed(2)}x`
+            : `${drift.toFixed(2)}x/${norm.toFixed(2)}n`;
 
       console.log(
         r.name.padEnd(w) +
@@ -218,9 +292,22 @@ export class Report {
           msFmt(r.scaling.smallMs).padStart(10) +
           `O(n^${r.scaling.exponent.toFixed(2)})`.padStart(11) +
           r.maxExponent.toFixed(2).padStart(7) +
-          (sizeMismatch ? `n/a@${baseN}` : drift ? `${drift.toFixed(2)}x` : "-").padStart(14) +
+          driftCell.padStart(16) +
           "  " +
           verdict
+      );
+    }
+
+    if (runnerFactor !== null) {
+      console.log(
+        `\nrunner factor: ${runnerFactor.toFixed(2)}x ` +
+          `(median drift of ${refDrifts.length} reference rows; the gate reads the /Nn column)`
+      );
+    } else {
+      console.log(
+        `\ndrift gate UNAVAILABLE: ${refDrifts.length} reference row(s) had a baseline, ` +
+          `${MIN_REFERENCE_DRIFTS} needed to form a runner factor.\n` +
+          `  Raw ratios are printed but NOT gated -- they are machine-dependent. `
       );
     }
     return failures;

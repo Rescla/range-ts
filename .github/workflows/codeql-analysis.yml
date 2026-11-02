@@ -23,7 +23,14 @@ on:
 jobs:
   analyze:
     name: Analyze
-    runs-on: ubuntu-latest
+    # Pinned to match main.yml. `ubuntu-latest` is mid-migration from 24.04
+    # to 26.04 (GitHub changelog 2026-09-17; rollout 2026-10-19 to
+    # 2026-11-19), so "latest" currently resolves to whichever of two OS
+    # versions the rollout has reached. Pinning keeps every job in this repo
+    # on the same image and makes the move to 26.04 one deliberate change.
+    # See main.yml for the full rationale, which the bench gate makes
+    # unavoidable.
+    runs-on: ubuntu-24.04
 
     # Explicit least privilege. CodeQL only reads the tree and uploads results
     # through its own action; it has no reason to hold a writable GITHUB_TOKEN.

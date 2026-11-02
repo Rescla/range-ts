@@ -53,6 +53,7 @@
     "test": "npm-run-all check:dependabot format:check test:node test:jsdom test:chrome",
     "test-dev": "npm run compile:karma && karma start dist/karma-conf/karma.conf.js",
     "bench": "node ./bench/run.mjs",
+    "bench:selftest": "node ./bench/gate-selftest.mjs",
     "bench:check": "node ./bench/run.mjs --check",
     "bench:baseline": "node ./bench/run.mjs --update-baseline"
   },
