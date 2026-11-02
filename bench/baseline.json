@@ -1,63 +1,68 @@
 {
   "_note": "Recorded absolute times for drift detection only. The gate is the exponent in bench/cases.mjs. Regenerate with `npm run bench:baseline` after an intentional performance change.",
-  "recordedAt": "2026-11-01T20:05:46.859Z",
+  "recordedAt": "2026-11-01T21:25:37.136Z",
   "node": "v26.12.0",
   "smallN": 20000,
   "measurements": {
     "putCoalescing (append, sequential)": {
-      "smallMs": 15.041913,
-      "largeMs": 33.278366,
-      "exponent": 1.1455965397800947
+      "smallMs": 6.629138,
+      "largeMs": 14.680211,
+      "exponent": 1.0149615156806138
     },
     "putCoalescing (random order)": {
-      "smallMs": 28.524022,
-      "largeMs": 80.902118,
-      "exponent": 1.5040000507586517
+      "smallMs": 18.406687,
+      "largeMs": 52.547954,
+      "exponent": 1.514665416156607
     },
     "put (append, sequential)": {
-      "smallMs": 5.384205,
-      "largeMs": 13.063773,
-      "exponent": 1.2787663817782648
+      "smallMs": 3.897106,
+      "largeMs": 8.461484,
+      "exponent": 1.0598442819536376
     },
     "put (random order)": {
-      "smallMs": 19.496695,
-      "largeMs": 40.820517,
-      "exponent": 1.0660648695693093
+      "smallMs": 12.79609,
+      "largeMs": 41.11481,
+      "exponent": 1.6839551172584823
     },
     "get hit": {
-      "smallMs": 3.074865,
-      "largeMs": 6.668202,
-      "exponent": 1.1167747373506705
+      "smallMs": 2.16035,
+      "largeMs": 4.561873,
+      "exponent": 1.0650789915607854
     },
     "get miss (in the gaps)": {
-      "smallMs": 3.260203,
-      "largeMs": 7.314504,
-      "exponent": 1.1657982396516064
+      "smallMs": 2.113182,
+      "largeMs": 4.309609,
+      "exponent": 0.9067043480526168
     },
     "remove (many small interior cuts)": {
-      "smallMs": 20.426569,
-      "largeMs": 44.531755,
-      "exponent": 1.1243875711054636
+      "smallMs": 12.859699,
+      "largeMs": 77.18932,
+      "exponent": 1.8425402148392496
     },
     "remove (wide chunks across the domain)": {
-      "smallMs": 0.035848,
-      "largeMs": 0.066765,
-      "exponent": 0.8971993699082826
+      "smallMs": 0.029426,
+      "largeMs": 0.056386,
+      "exponent": 0.863424762291041
     },
     "subRangeMap (half the domain)": {
-      "smallMs": 1.33867,
-      "largeMs": 4.461997,
-      "exponent": 1.7368891826628405
+      "smallMs": 1.012488,
+      "largeMs": 2.013856,
+      "exponent": 0.8448118649343981
+    },
+    "subRangeMap (many small windows)": {
+      "smallMs": 0.779371,
+      "largeMs": 1.582667,
+      "exponent": 1.0084467206890555
     },
     "asMapOfRanges (full materialise)": {
-      "smallMs": 1.524639,
-      "largeMs": 4.082073,
-      "exponent": 1.4208342968338488
+      "smallMs": 0.784701,
+      "largeMs": 1.669379,
+      "exponent": 1.0670347481361004
     },
-    "span": {
-      "smallMs": 0.363311,
-      "largeMs": 0.996359,
-      "exponent": 1.455460609126645
+    "span (n calls)": {
+      "smallMs": 0.83777,
+      "largeMs": 1.656796,
+      "exponent": 0.9568938268508227
     }
   }
 }

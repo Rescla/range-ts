@@ -77,3 +77,22 @@ jobs:
       #
       # Coverage is still produced locally by karma-coverage-istanbul and Stryker;
       # it just is not uploaded to a third-party dashboard any more.
+
+      # Scaling gate. Its own step, deliberately NOT inside `npm test`: the
+      # unit suite must stay fast and deterministic, and a timing-based check
+      # does not belong in it. But it DOES belong in CI, because a quadratic
+      # write path is invisible to correctness tests — it took this library
+      # from milliseconds to fifteen seconds without failing a single
+      # assertion, and nothing caught it.
+      #
+      # The gate is the scaling EXPONENT, which is dimensionless: a linear
+      # operation reads ~1.0 on a shared Xeon and on a laptop alike, so a
+      # slow runner shows up as a slow step, not as a red build. Absolute
+      # times are compared against bench/baseline.json for drift only.
+      #
+      # If this step goes red, read the row: `FAIL scaling` is a complexity
+      # regression (real), `FAIL drift` is a >3x constant regression
+      # (also real). Neither is "the runner was slow" — that is what the
+      # paired-interleaved measurement in bench/harness.mjs is for.
+      - name: Bench scaling gate
+        run: npm run bench:check

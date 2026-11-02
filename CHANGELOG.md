@@ -173,10 +173,27 @@ full reasoning in [docs/1.0.0-notes.md](docs/1.0.0-notes.md).
 - Stated guarantee: **reads O(log n); writes O(n) worst case** with a native
   memmove constant. Interior removes are still quadratic in the limit
   (measured O(n^2.03)) but 300–500× faster than the old scan at every size.
-- **New `npm run bench` / `bench:check` / `bench:baseline`** — separate from
-  `npm test`. Gates on the scaling *exponent* (machine-independent) rather
-  than absolute time, with 11 scenarios. Not a regression gate you can skip:
-  it is what would have caught the original O(n²).
+- **`subRangeMap` no longer scans the whole map.** It intersected *every*
+  entry, so a one-entry submap out of a 100 000-entry map still cost
+  100 000 intersections — O(n) per call, O(n²) across a loop of small
+  submaps. It now brackets the intersecting window with the same two binary
+  searches the write path uses: **O(log n + k)**, like Guava. Measured
+  O(n^2.0) → O(n^1.0) on the new `subRangeMap (many small windows)` bench
+  case. No API change.
+- **`span()` no longer copies the entry array** to filter it; it scans in
+  from the sorted ends. Same result, no allocation, O(1) in the common case.
+- **`npm run bench:check` is now a gate that actually gates.** It was wired
+  to nothing, and when run by hand it failed roughly one time in two on
+  unchanged code. Three causes: the runner overrode the harness's required
+  warmup with `warmup: 1`; the drift comparison read the baseline file at
+  the wrong nesting level and so could never fire; and the two sizes were
+  timed in separate phases, which multiplies noise into the ratio instead
+  of cancelling it. Now: warmup 14 / rounds 7 (both env-overridable),
+  paired interleaved measurement, live drift column, **12 scenarios**, and a
+  step in CI. Three consecutive green runs after the change; the residual
+  wobble on the allocation-heavy interior-remove case is documented rather
+  than smoothed over. See
+  [docs/1.0.0-notes.md](docs/1.0.0-notes.md#benchmarking-notes--three-things-this-harness-got-wrong-before-it-was-right).
 
 ### Quality
 

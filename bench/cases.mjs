@@ -143,29 +143,25 @@ export function scenarios(mod) {
       // reads dominate. A write-dominated interior workload is where a
       // different structure would win; see docs/1.0.0-notes.md.
       //
-      // Gate at 2.2: catches anything WORSE than quadratic (the old code
-      // measured 2.05-2.07 and would pass this), while constant regressions
-      // are caught by maxRatioVsBaseline rather than pretending the exponent
-      // should be sub-linear.
       // MEASUREMENT CAVEAT, so nobody "fixes" this by tightening the gate.
       // This workload is allocation-dominated: each round builds a 20-40k
-      // entry map and splits half of it, and the measured time swings 5-10x
-      // with heap state rather than with the algorithm. Observed for the SAME
-      // code at 20k->40k:
+      // entry map and splits half of it, so the reading is sensitive to heap
+      // state. What actually destabilised it was a SHORT warmup, not a long
+      // one. Same code, n=20000 -> 40000, three passes each:
       //
-      //   warmup=14, rounds=7    ->  exponent 1.44
-      //   warmup=30, rounds=11   ->  exponent 2.20
-      //   warmup=60, rounds=15   ->  exponent 4.76
+      //   warmup=1,  rounds=5  ->  p = 5.03 / 1.78 / 1.80   (one FAIL)
+      //   warmup=14, rounds=7  ->  p = 1.75 / 1.76 / 1.77   (tight)
       //
-      // More warmup made it WORSE, because more warmup means more promoted
-      // garbage and a GC-heavier measurement. An exponent that moves 3x with
-      // harness settings cannot gate anything; it just trains people to
-      // ignore red.
+      // An earlier note here claimed the opposite — that MORE warmup made it
+      // worse (14 -> 1.44, 30 -> 2.20, 60 -> 4.76). That is not
+      // reproducible on this build and it was the justification people would
+      // cite to keep warmup low, which is what made the gate flaky. Re-measure
+      // before repeating it.
       //
-      // Gate set at 2.5 — deliberately loose, catches only a gross regression
+      // Gate stays at 2.5: deliberately loose, catches only a gross regression
       // past quadratic-plus. The real protection for this path is the
-      // differential test (6000 randomised put/putCoalescing/remove
-      // sequences against the previous build, 0 data loss) and the ten other
+      // differential test (3000+ randomised put/putCoalescing/remove
+      // sequences against the previous build, 0 data loss) and the other
       // gated cases, not this number.
       name: "remove (many small interior cuts)",
       maxExponent: 2.5,
@@ -201,16 +197,45 @@ export function scenarios(mod) {
       op: (m, n) => m.subRangeMap(NumberRange.closedOpen(0, (n / 2) * STRIDE)),
     },
     {
+      // The case the single-call subRangeMap above cannot see. One call over a
+      // big map is O(n) whatever the implementation, so its exponent reads
+      // ~1.2 and passes no matter how expensive each call is. Many SMALL
+      // submaps is the shape that distinguishes "scans the whole map every
+      // time" from "bounds the window it actually intersects": the first is
+      // O(n) per call and O(n^2) across n/10 calls, the second is
+      // O(log n + k) per call with k ~ 1 here. Measured O(n^2.0) before the
+      // window was bounded, O(n^1.1) after.
+      name: "subRangeMap (many small windows)",
+      maxExponent: 1.5,
+      make: mkSeq,
+      op: (m, n) => {
+        let acc = 0;
+        for (let i = 0; i < n / 10; i++) {
+          acc += m.subRangeMap(NumberRange.closedOpen(i * STRIDE, i * STRIDE + 1)).asMapOfRanges().size;
+        }
+        if (acc === 0) throw new Error("small-window subRangeMap found nothing — measuring the wrong thing");
+        return acc;
+      },
+    },
+    {
       name: "asMapOfRanges (full materialise)",
       maxExponent: 1.35,
       make: mkSeq,
       op: (m, n) => m.asMapOfRanges(),
     },
     {
-      name: "span",
+      // n calls, not one. A single `span()` on the from-the-ends implementation
+      // is ~5 us, and an exponent computed from two samples that small is
+      // noise — it read O(n^1.45) and failed a 1.35 gate on code that is
+      // O(1). Calling it n times makes the case measure what it claims:
+      // O(n) total while span is O(1), and O(n^2) the moment span regresses
+      // to the whole-array-filter version it replaced.
+      name: "span (n calls)",
       maxExponent: 1.35,
       make: mkSeq,
-      op: (m, n) => m.span(),
+      op: (m, n) => {
+        for (let i = 0; i < n; i++) m.span();
+      },
     },
   ];
 }

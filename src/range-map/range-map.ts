@@ -564,29 +564,51 @@ export class RangeMap<T, P = Comparable, R extends Range<any> = DefaultRange<P>>
    * The submap is a new map holding new range objects, but the VALUES are
    * shared with the parent by reference: mutating a value obtained through a
    * submap writes through to the parent's entry. See the note on `get`.
+   *
+   * WHY IT BOUNDS THE WINDOW. This used to `flatMap` over EVERY entry in the
+   * map and intersect each one, so a submap of one entry out of a million
+   * still cost a million intersections — O(n) per call, and O(n^2) for a
+   * loop of small submaps. The entries are disjoint and cut-sorted, so the
+   * ones that can intersect `range` are exactly those with
+   * `upperCut > range.lowerCut` AND `lowerCut < range.upperCut`, which the
+   * same two binary searches `spliceOverlapping` uses bracket in O(log n).
+   * Guava's `subRangeMap` is O(log n + k) for the same reason.
    */
   subRangeMap(range: R): RangeMap<T, P, R> {
     if (range.isEmpty()) {
       return RangeMap.fromRangeValues([], this.eq);
     }
 
-    const rangeValues = this.rangeValues.flatMap((rangeValue) => {
+    const scalar = range.scalar;
+    const entries = this.rangeValues;
+    const start = this.firstUpperCutAfter(
+      scalar,
+      range.lowerEndpoint,
+      RangeMap.lowerCutSide(range)
+    );
+    const end = this.firstLowerCutAtOrAfter(
+      scalar,
+      range.upperEndpoint,
+      RangeMap.upperCutSide(range)
+    );
+
+    const rangeValues: RangeValue<T, P, R>[] = [];
+    for (let i = start; i < end; i++) {
+      const rangeValue = entries[i];
       // The intersection is built by the range machinery, which returns the base
       // class; the map's own R is the honest type because every range it holds is
       // an R and `intersection` preserves the receiver's class.
       const intersection = rangeValue.range.intersection(range) as R | null;
 
       if (!intersection || intersection.isEmpty()) {
-        return [];
+        continue;
       }
 
-      return [
-        {
-          range: intersection,
-          value: rangeValue.value,
-        },
-      ];
-    });
+      rangeValues.push({
+        range: intersection,
+        value: rangeValue.value,
+      });
+    }
 
     return RangeMap.fromRangeValues(rangeValues, this.eq);
   }
@@ -613,18 +635,32 @@ export class RangeMap<T, P = Comparable, R extends Range<any> = DefaultRange<P>>
    * the write-side guard in `combinedPut` no empty can get in through the
    * public API; the filter stays as defence against state assembled by other
    * means, and because `span` should not depend on how the entries arrived.)
+   *
+   * The array is already cut-sorted, so the two ends are found by scanning
+   * inward from the outside rather than by filtering a copy of the whole
+   * array. Same answer, no allocation, and O(1) in the common case where the
+   * outermost entries are non-empty.
    */
   span(): R | null {
-    const nonEmpty = this.byLower().filter(
-      (rangeValue) => !rangeValue.range.isEmpty()
-    );
-
-    if (nonEmpty.length === 0) {
+    const entries = this.byLower();
+    let firstIdx = -1;
+    for (let i = 0; i < entries.length; i++) {
+      if (!entries[i].range.isEmpty()) {
+        firstIdx = i;
+        break;
+      }
+    }
+    if (firstIdx < 0) {
       return null;
     }
 
-    const first = nonEmpty[0].range;
-    const last = nonEmpty[nonEmpty.length - 1].range;
+    let lastIdx = entries.length - 1;
+    while (lastIdx > firstIdx && entries[lastIdx].range.isEmpty()) {
+      lastIdx--;
+    }
+
+    const first = entries[firstIdx].range;
+    const last = entries[lastIdx].range;
 
     return likeRange(
       first,

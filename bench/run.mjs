@@ -54,11 +54,27 @@ const base = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, "utf8")) :
 // that fails at random, which trains people to ignore it. Override with
 // BENCH_N=<n>.
 const SMALL = Number(process.env.BENCH_N || 20000);
-const OPTS = { rounds: Number(process.env.BENCH_ROUNDS || 5), warmup: 1 };
+// WARMUP IS NOT COSMETIC AND MUST NOT BE PINNED LOW HERE.
+// harness.timeOp's own comment documents that `warmup: 1, rounds: 5` samples
+// entirely from the pre-optimisation band, and this runner is the only caller.
+// Measured on this build, same code, n=20000 -> 40000, three passes each:
+//
+//   warmup=1,  rounds=5  ->  interior-remove p = 5.03 / 1.78 / 1.80  (1 FAIL)
+//   warmup=14, rounds=7  ->  interior-remove p = 1.75 / 1.76 / 1.77  (0 FAIL)
+//
+// The previous value here (`rounds: 5, warmup: 1`) was exactly the broken
+// configuration, so `bench:check` failed roughly one run in two on unchanged
+// code. Both knobs are env-overridable so a run can be reproduced exactly.
+const OPTS = {
+  rounds: Number(process.env.BENCH_ROUNDS || 7),
+  warmup: Number(process.env.BENCH_WARMUP || 14),
+};
 
 console.log(`RangeMap performance suite`);
 console.log(`  lib: ${libPath}`);
-console.log(`  n: ${SMALL} -> ${SMALL * 2}   rounds: ${OPTS.rounds}   mode: ${mode}\n`);
+console.log(
+  `  n: ${SMALL} -> ${SMALL * 2}   rounds: ${OPTS.rounds}   warmup: ${OPTS.warmup}   mode: ${mode}\n`
+);
 
 const report = new Report();
 const fresh = {};

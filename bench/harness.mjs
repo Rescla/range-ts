@@ -38,12 +38,6 @@ export function rng(seed = 0x5eed) {
   };
 }
 
-/** Median of an array of numbers. */
-export function median(xs) {
-  const s = [...xs].sort((a, b) => a - b);
-  return s[Math.floor(s.length / 2)];
-}
-
 /**
  * Low-quantile estimator — the statistic this harness times with.
  *
@@ -70,63 +64,31 @@ export function lowQuantile(xs, q = 0.25) {
   return s[idx];
 }
 
-/**
- * Run `fn` `rounds` times after a warmup, return the median wall time in ms.
+/*
+ * TWO RULES THIS HARNESS EXISTS TO ENFORCE (kept here as evidence, not code —
+ * `scaling` below implements both, and a second copy of them as a helper
+ * function is how they got bypassed last time):
  *
- * Warmup matters more than it looks: V8 needs several iterations before it
- * stops deoptimising, and a cold first run can be 5-10x a warm one. Taking
- * the median of an odd count kills the outlier tails.
+ * 1. SETUP IS NEVER INSIDE THE TIMER. `make(n)` builds the subject before
+ *    every round and outside the timed region, so a mutating `op` always sees
+ *    a pristine map and rounds stay comparable. The earlier `runAt(n)` shape
+ *    timed the build along with the operation, which made every scenario
+ *    report the build's exponent and hid the thing being measured.
+ *
+ * 2. WARMUP MUST REACH V8'S TOP TIER, not just "a couple of runs to be
+ *    polite". Measured on the remove-many scenario at n=20000, 25
+ *    consecutive rounds gave:
+ *
+ *      rounds  0- 9:  47 - 342 ms   (still tiering up; wildly unstable)
+ *      rounds 10-24:  21 -  24 ms   (stable)
+ *
+ *    A 7-14x gap between warm and cold for identical work. With
+ *    `warmup: 1, rounds: 5` every sample came from the unstable band, which
+ *    is how this file reported O(n^2.92) for code that measures O(n^1.1)
+ *    once optimised. An exponent gate driven by JIT tier is not a gate at
+ *    all. Warmup runs the SAME factory at the SAME size, so the function is
+ *    compiled in the shape it will be measured in.
  */
-export function time(fn, { rounds = 5, warmup = 1 } = {}) {
-  for (let i = 0; i < warmup; i++) fn();
-  const samples = [];
-  for (let i = 0; i < rounds; i++) {
-    const t0 = process.hrtime.bigint();
-    fn();
-    samples.push(Number(process.hrtime.bigint() - t0) / 1e6);
-  }
-  return lowQuantile(samples, 0.25);
-}
-
-/**
- * Time an operation against freshly built state.
- *
- * `make(n)` builds the subject; `op(subject)` is the work being measured.
- * `make` runs before EVERY round and is never inside the timer, so a
- * mutating `op` always sees a pristine map and rounds stay comparable.
- *
- * This is the shape the scenarios use. The earlier `runAt(n)` shape timed the
- * build along with the operation, which made every scenario report the build's
- * exponent and hid the thing being measured.
- */
-/**
- * `warmup` must be large enough to reach V8's top optimisation tier, not just
- * "a couple of runs to be polite". Measured on the remove-many scenario at
- * n=20000, 25 consecutive rounds gave:
- *
- *   rounds  0- 9:  47 - 342 ms   (still tiering up; wildly unstable)
- *   rounds 10-24:  21 -  24 ms   (stable)
- *
- * A 7-14x gap between warm and cold for identical work. With the previous
- * `warmup: 1, rounds: 5` every sample was taken from the unstable band, which
- * is how this file reported O(n^2.92) for code that measures O(n^1.1) once
- * optimised. An exponent gate driven by JIT tier is not a gate at all.
- *
- * Warmup runs the SAME subject factory at the SAME size, so the function under
- * test is compiled in the same shape it will be measured in.
- */
-export function timeOp(make, op, { rounds = 7, warmup = 14 } = {}) {
-  const runOnce = () => {
-    const subject = make();
-    const t0 = process.hrtime.bigint();
-    op(subject);
-    return Number(process.hrtime.bigint() - t0) / 1e6;
-  };
-  for (let i = 0; i < warmup; i++) runOnce();
-  const samples = [];
-  for (let i = 0; i < rounds; i++) samples.push(runOnce());
-  return lowQuantile(samples, 0.25);
-}
 
 /**
  * Measure how an operation scales: run it at n and at 2n, return the exponent.
@@ -136,11 +98,54 @@ export function timeOp(make, op, { rounds = 7, warmup = 14 } = {}) {
  * p ~= 1.0  linear
  * p ~= 1.1  n log n
  * p ~= 2.0  quadratic  <-- the thing we are hunting
+ *
+ * WHY THE PAIRS ARE INTERLEAVED. The obvious shape — time every small round,
+ * then time every large round, then divide the two quantiles — compounds noise
+ * instead of cancelling it: a slow patch during the large phase and a fast
+ * patch during the small phase multiply into the ratio. That is what made the
+ * gate fire at random even after warmup was fixed; the same unchanged code
+ * read O(n^1.48), O(n^1.96) and O(n^2.25) on three consecutive runs.
+ *
+ * Timing the two sizes as a PAIR, back to back, means anything external that
+ * hits one hits both, and the ratio is taken WITHIN the pair before any
+ * averaging. The order is alternated per round so a systematic "second one
+ * is slower" effect (cache, GC timing) cancels across the round set instead
+ * of biasing every pair the same way. The exponent then comes from the p25 of
+ * the paired ratios, not from a ratio of two independently chosen samples.
  */
 export function scaling(make, op, smallN, largeN = smallN * 2, opts) {
-  const smallMs = timeOp(() => make(smallN), (s) => op(s, smallN), opts);
-  const largeMs = timeOp(() => make(largeN), (s) => op(s, largeN), opts);
-  const ratio = largeMs / smallMs;
+  const { rounds = 7, warmup = 14 } = opts || {};
+
+  const runOnce = (n) => {
+    const subject = make(n);
+    const t0 = process.hrtime.bigint();
+    op(subject, n);
+    return Number(process.hrtime.bigint() - t0) / 1e6;
+  };
+
+  // Warm both sizes to the same tier before either is measured, so neither
+  // phase pays for the other's compilation.
+  for (let i = 0; i < warmup; i++) {
+    runOnce(smallN);
+    runOnce(largeN);
+  }
+
+  const small = [];
+  const large = [];
+  const ratios = [];
+  for (let i = 0; i < rounds; i++) {
+    const a = runOnce(i % 2 === 0 ? smallN : largeN);
+    const b = runOnce(i % 2 === 0 ? largeN : smallN);
+    const s = i % 2 === 0 ? a : b;
+    const l = i % 2 === 0 ? b : a;
+    small.push(s);
+    large.push(l);
+    ratios.push(l / s);
+  }
+
+  const smallMs = lowQuantile(small, 0.25);
+  const largeMs = lowQuantile(large, 0.25);
+  const ratio = lowQuantile(ratios, 0.25);
   const exponent = Math.log(ratio) / Math.log(largeN / smallN);
   return { smallN, largeN, smallMs, largeMs, ratio, exponent };
 }
@@ -180,7 +185,14 @@ export class Report {
     console.log("-".repeat(w + 62));
 
     for (const r of this.rows) {
-      const base = baseline?.[r.name];
+      // The baseline file nests the rows under `measurements` (see run.mjs's
+      // --update-baseline writer). Reading them off the top level returned
+      // undefined for every row, so `drift` was always null, the
+      // "vs baseline" column printed "-" everywhere, and
+      // maxRatioVsBaseline could never fire: the gate that this file claims
+      // catches "still linear, just 10x slower" was inert. Accept both
+      // shapes so a hand-written flat baseline still works.
+      const base = baseline?.measurements?.[r.name] ?? baseline?.[r.name];
       const drift = base ? r.scaling.smallMs / base.smallMs : null;
       const expBad = r.scaling.exponent > r.maxExponent;
       const driftBad = r.maxRatioVsBaseline && drift && drift > r.maxRatioVsBaseline;
@@ -191,10 +203,12 @@ export class Report {
           : "ok";
       if (expBad || driftBad) failures.push(r);
 
+      const msFmt = (v) => (v < 1 ? v.toFixed(3) : v.toFixed(1));
+
       console.log(
         r.name.padEnd(w) +
           `${r.scaling.smallN}/${r.scaling.largeN}`.padStart(12) +
-          r.scaling.smallMs.toFixed(1).padStart(10) +
+          msFmt(r.scaling.smallMs).padStart(10) +
           `O(n^${r.scaling.exponent.toFixed(2)})`.padStart(11) +
           r.maxExponent.toFixed(2).padStart(7) +
           (drift ? `${drift.toFixed(2)}x` : "-").padStart(14) +
