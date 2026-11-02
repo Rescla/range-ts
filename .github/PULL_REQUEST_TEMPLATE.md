@@ -34,7 +34,7 @@ npm run test:mutation
 ## Breaking change?
 
 - [ ] No
-- [ ] Yes — documented under `### Breaking` in CHANGELOG.md with the *reason*
+- [ ] Yes — documented under `### Breaking` in CHANGELOG.md with the _reason_
 
 If yes: is everything still reachable from the package root? Deep imports are
 blocked by the `exports` map, so a new public export must be added to `src/index.ts`.

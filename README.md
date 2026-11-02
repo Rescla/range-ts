@@ -60,11 +60,11 @@ return {
 
 `isEmpty()` is true for `[v..v)`, `(v..v]` and `(v..v)` — the ranges whose
 endpoints meet with at least one side open. A range whose lower endpoint is
-*greater* than its upper endpoint is not a range, and constructing one throws:
+_greater_ than its upper endpoint is not a range, and constructing one throws:
 
 ```typescript
-NumberRange.closed(5, 1);            // Error: lower endpoint (5) is greater than upper endpoint (1)
-NumberRange.closedOpen(0.5, -0.5);   // Error, same reason
+NumberRange.closed(5, 1); // Error: lower endpoint (5) is greater than upper endpoint (1)
+NumberRange.closedOpen(0.5, -0.5); // Error, same reason
 ```
 
 The reason is not tidiness. Such a range contains nothing, but it is not
@@ -130,9 +130,7 @@ festivalAttendanceRangeMap.putCoalescing(NumberRange.closedOpen(1, 5), []);
 attendance.forEach(({ name, days }) => {
   days.forEach((day) => {
     const dayRange = NumberRange.closedOpen(day, day + 1);
-    const subRangeMap = festivalAttendanceRangeMap
-      .subRangeMap(dayRange)
-      .asMapOfRanges();
+    const subRangeMap = festivalAttendanceRangeMap.subRangeMap(dayRange).asMapOfRanges();
 
     // Iterate over all existing entries for the given day
     // Not really necessary in this example, but this will handle any periods that do not span the entire day as well
@@ -154,6 +152,23 @@ expect([...result.entries()]).toEqual([
 See also: https://guava.dev/releases/19.0/api/docs/com/google/common/collect/TreeRangeMap.html
 
 Note that the current implementation in this library is a simple array based list of key/value pairs, not a tree based structure.
+
+#### Differences from Guava's `TreeRangeMap`
+
+This library follows Guava's semantics closely but is not a line-for-line port. Five
+places behave differently, and all of them are deliberate:
+
+|                                    | Guava                                                                        | range-ts                                                                                                                                                                                                                                                                    |
+| ---------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Range as a `Map` key**           | `Range` has `equals`/`hashCode`, so `asMapOfRanges().get(equalRange)` works  | `Range` has **no value equality**. JS `Map` uses SameValueZero with no hook to override, so the key is object identity and `get(equalRange)` is `undefined`. Look up by **point** instead: `get(k)` / `getEntry(k)`.                                                        |
+| **`put(range, null)`**             | throws (`checkNotNull`)                                                      | accepted. `get` already returns `null` for absent, so this matches JS `Map`. Use `getEntry(k)` to tell "mapped to null" from "no entry".                                                                                                                                    |
+| **`putCoalescing` merge width**    | computes both neighbour probes against the **unmutated** map                 | the second probe sees the array the first already spliced, so it can merge **more**. Same point mapping always; no differently-valued entry can be clobbered. Treat `asMapOfRanges()` after a coalescing write as the current partition, not a record of what you inserted. |
+| **Empty range in `putCoalescing`** | bridges: `putCoalescing([1..1), a)` on `{[0..1)=a, [1..2)=a}` → `{[0..2)=a}` | **same** — the bridge works. Plain `put` of an empty range is a no-op in both.                                                                                                                                                                                              |
+| **`subRangeMap`**                  | a live view; writes go to the parent                                         | an **independent snapshot**. `sub.put(...)` does not touch the parent. Values are still shared by reference, so mutating a value read through the submap does reach the parent.                                                                                             |
+
+The first two are consequences of the platform rather than choices — there is no way
+to give a JS `Map` custom key equality. The last three are design decisions made
+for a sorted-array backing store.
 
 ## Scalars: ranges over exact domains
 
@@ -194,11 +209,11 @@ for a worked consumer-side example.
 
 The package ships CommonJS and ESM builds and resolves through an `exports` map:
 
-| Consumer | Gets |
-| --- | --- |
-| `require("range-ts")` | `dist/cjs` (CommonJS) |
+| Consumer                     | Gets                    |
+| ---------------------------- | ----------------------- |
+| `require("range-ts")`        | `dist/cjs` (CommonJS)   |
 | `import ... from "range-ts"` | `dist/esm` (ES modules) |
-| TypeScript | `dist/types` |
+| TypeScript                   | `dist/types`            |
 
 `range-ts/package.json` is also exported, for tooling that reads the version.
 
@@ -231,7 +246,7 @@ most of the prose in `CHANGELOG.md` and `RELEASE.md`.
 
 **What the human did.** Set the scope and decided which breaking changes were
 acceptable; reviewed the agent's output, including a second independent review
-pass run against the *packed tarball* rather than the source tree; and owns the
+pass run against the _packed tarball_ rather than the source tree; and owns the
 release decision itself. The publish/promote step is deliberately outside the
 agent's reach — CI ends at "staged", and promotion requires a human with 2FA.
 
@@ -265,4 +280,3 @@ want, and it is the kind of fact that is easy to omit by accident and harder to
 recover later. It also sets the expectation that the review burden shifts: less
 "the author wrote this, it's probably fine", more "here is instrumentation, check
 it".
-

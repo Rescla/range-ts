@@ -172,6 +172,7 @@ export class Report {
   /** Print an aligned table and return the list of failures. */
   render(baseline) {
     const failures = [];
+    const baseN = baseline?.smallN ?? null;
     const w = Math.max(28, ...this.rows.map((r) => r.name.length));
     console.log(
       "measurement".padEnd(w) +
@@ -193,7 +194,13 @@ export class Report {
       // catches "still linear, just 10x slower" was inert. Accept both
       // shapes so a hand-written flat baseline still works.
       const base = baseline?.measurements?.[r.name] ?? baseline?.[r.name];
-      const drift = base ? r.scaling.smallMs / base.smallMs : null;
+      // A drift ratio across two different problem sizes measures the size
+      // difference, not a regression: at n=40000 against a 20000 baseline
+      // every row read ~2x, which is the expected cost of twice the work.
+      // run.mjs refuses this combination in check mode; the guard is here too
+      // so a direct caller cannot get a confident-looking wrong number.
+      const sizeMismatch = baseN !== null && r.scaling.smallN !== baseN;
+      const drift = !sizeMismatch && base ? r.scaling.smallMs / base.smallMs : null;
       const expBad = r.scaling.exponent > r.maxExponent;
       const driftBad = r.maxRatioVsBaseline && drift && drift > r.maxRatioVsBaseline;
       const verdict = expBad
@@ -211,7 +218,7 @@ export class Report {
           msFmt(r.scaling.smallMs).padStart(10) +
           `O(n^${r.scaling.exponent.toFixed(2)})`.padStart(11) +
           r.maxExponent.toFixed(2).padStart(7) +
-          (drift ? `${drift.toFixed(2)}x` : "-").padStart(14) +
+          (sizeMismatch ? `n/a@${baseN}` : drift ? `${drift.toFixed(2)}x` : "-").padStart(14) +
           "  " +
           verdict
       );

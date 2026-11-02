@@ -58,7 +58,7 @@ updates.forEach((u, i) => {
       `updates[${i}] '${eco}': ${offending.join(", ")} is not supported for this ` +
         `ecosystem (npm only). GitHub rejects the whole file, and while the file is ` +
         `invalid Dependabot stops version updates for EVERY entry, not just this one. ` +
-        `Use 'default-days' instead.`,
+        `Use 'default-days' instead.`
     );
   } else if (offending.length) {
     notes.push(`updates[${i}] '${eco}': ${offending.join(", ")} (allowed)`);
@@ -91,13 +91,13 @@ if (npmrcAge !== null) {
       problems.push(
         `updates[${i}] '${eco}': no cooldown.default-days, but .npmrc sets ` +
           `min-release-age=${npmrcAge}. Dependabot will propose versions npm refuses ` +
-          `to install, and CI will fail with a misleading ETARGET.`,
+          `to install, and CI will fail with a misleading ETARGET.`
       );
     } else if (dd < npmrcAge) {
       problems.push(
         `updates[${i}] '${eco}': cooldown.default-days=${dd} is SHORTER than ` +
           `.npmrc min-release-age=${npmrcAge}. Dependabot will propose versions the ` +
-          `install gate rejects. Raise default-days to at least ${npmrcAge}.`,
+          `install gate rejects. Raise default-days to at least ${npmrcAge}.`
       );
     } else {
       notes.push(`updates[${i}] '${eco}': default-days=${dd} >= ${npmrcAge} (aligned)`);

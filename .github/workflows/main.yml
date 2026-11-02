@@ -37,7 +37,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
-          node-version: '26'
+          node-version: "26"
 
       # NOTE: do NOT add --omit=optional here.
       #
@@ -53,6 +53,15 @@ jobs:
       # install and skipping the compiler are different switches.
       - name: Npm ci
         run: npm ci
+
+      # Formatting gate. Runs before the build so a style failure costs seconds,
+      # not a full compile. This step is the reason `.prettierrc.json` exists:
+      # the repo had prettier and a lint-staged config for a while, but no hook
+      # was ever installed and nothing ever checked, so the code drifted and the
+      # advertised control was inert. A formatter that is not checked is a
+      # suggestion.
+      - name: Check formatting
+        run: npm run format:check
 
       - name: Run build
         run: npm run build

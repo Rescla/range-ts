@@ -38,12 +38,7 @@ function resolveChromeBin(): string | undefined {
   const fromEnv = process.env.CHROME_BIN;
   if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
 
-  const names = [
-    "google-chrome-stable",
-    "google-chrome",
-    "chromium",
-    "chromium-browser",
-  ];
+  const names = ["google-chrome-stable", "google-chrome", "chromium", "chromium-browser"];
   const dirs = (process.env.PATH || "").split(path.delimiter).filter(Boolean);
   for (const dir of dirs) {
     for (const name of names) {
@@ -132,11 +127,7 @@ function karmaConfig(config: Config): void {
         rules: [
           {
             test: /\.(js|ts)$/,
-            exclude: [
-              /test\.js$/,
-              path.join(ROOT, "node_modules"),
-              /\.spec\.js$/,
-            ],
+            exclude: [/test\.js$/, path.join(ROOT, "node_modules"), /\.spec\.js$/],
             enforce: "post",
             use: {
               loader: "babel-loader",

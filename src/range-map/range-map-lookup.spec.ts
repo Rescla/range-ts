@@ -216,6 +216,28 @@ describe("likeRange will not construct from a non-Range constructor", () => {
     m.put(NumberRange.closed(9, 12), "b");
     expect(m.span() instanceof NumberRange).toBe(true);
   });
+
+  it("preserves the subclass through subRangeMap as well, not only through span()", () => {
+    // `Range.intersection` constructs `new Range(...)` directly — it does NOT
+    // route through `likeRange` — so a `subRangeMap` built from the raw
+    // intersection hands back base `Range` objects under a signature that says
+    // `R`. That compiles clean and fails at the first `instanceof`, or the
+    // first call to a subclass-only method on a key read out of
+    // `asMapOfRanges()`. The body rebuilds through `likeRange` off the stored
+    // entry; this pins it, because without a test the cast is one refactor away
+    // from coming back.
+    const m = new RangeMap<string>();
+    m.put(NumberRange.closed(1, 5), "a");
+    m.put(NumberRange.closed(9, 12), "b");
+
+    const keys = [...m.subRangeMap(NumberRange.closedOpen(0, 11)).asMapOfRanges().keys()];
+    expect(keys.length).toBe(2);
+    for (const k of keys) expect(k instanceof NumberRange).toBe(true);
+
+    // And they are the INTERSECTED bounds, not the originals wearing the right
+    // class — the rebuild must not have widened anything.
+    expect(keys.map((k) => k.toString())).toEqual(["[1..5]", "[9..11)"]);
+  });
 });
 
 /**

@@ -1,0 +1,10 @@
+# Build and tool output — never format what we do not author by hand.
+dist/
+node_modules/
+coverage/
+reports/
+.stryker-tmp/
+*.tsbuildinfo
+
+# Vendored / generated docs are excluded only if they ever appear here.
+bench/baseline.json

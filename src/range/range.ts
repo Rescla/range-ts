@@ -225,6 +225,25 @@ export class Range<T> {
    * scalar objects that DO order the values compare normally, so nothing that was
    * previously answering correctly changes.
    */
+  /**
+   * The cross-domain guard, shared by `compareCuts` and `isAdjacentTo`.
+   *
+   * Fires only on the unordered result. Two distinct-but-equivalent scalar
+   * objects that DO order the values compare normally, so nothing that was
+   * previously answering correctly changes.
+   */
+  private assertComparable(other: Range<T>, byValue: number): void {
+    if (this.scalar !== other.scalar && Number.isNaN(byValue)) {
+      throw new Error(
+        "Range: compared endpoints across two different Scalar implementations " +
+          "and the comparison came back unordered. These ranges were built over " +
+          "different point domains and cannot be intersected, spanned, enclosed, " +
+          "connected or tested for adjacency. Build both ranges from the same " +
+          "scalar (defineRange(yourScalar)) rather than mixing domains."
+      );
+    }
+  }
+
   private compareCuts(
     other: Range<T>,
     myValue: T,
@@ -234,15 +253,7 @@ export class Range<T> {
   ): number {
     const byValue = this.scalar.compare(myValue, theirValue);
 
-    if (this.scalar !== other.scalar && Number.isNaN(byValue)) {
-      throw new Error(
-        "Range: compared endpoints across two different Scalar implementations " +
-          "and the comparison came back unordered. These ranges were built over " +
-          "different point domains and cannot be intersected, spanned, enclosed " +
-          "or connected. Build both ranges from the same scalar " +
-          "(defineRange(yourScalar)) rather than mixing domains."
-      );
-    }
+    this.assertComparable(other, byValue);
 
     // Unordered operands fall through here as NaN, and `NaN !== 0` is true, so
     // the NaN propagates rather than reaching the side tie-break.
@@ -399,21 +410,23 @@ export class Range<T> {
     };
 
     // this ends exactly where other begins
-    if (
-      this.upperBoundType === BoundType.CLOSED &&
-      other.lowerBoundType === BoundType.CLOSED
-    ) {
+    if (this.upperBoundType === BoundType.CLOSED && other.lowerBoundType === BoundType.CLOSED) {
       const nxt = step(this.upperEndpoint);
-      if (nxt !== null && s.compare(nxt, other.lowerEndpoint) === 0) return true;
+      if (nxt !== null) {
+        const cmp = s.compare(nxt, other.lowerEndpoint);
+        this.assertComparable(other, cmp);
+        if (cmp === 0) return true;
+      }
     }
 
     // other ends exactly where this begins
-    if (
-      other.upperBoundType === BoundType.CLOSED &&
-      this.lowerBoundType === BoundType.CLOSED
-    ) {
+    if (other.upperBoundType === BoundType.CLOSED && this.lowerBoundType === BoundType.CLOSED) {
       const nxt = step(other.upperEndpoint);
-      if (nxt !== null && s.compare(nxt, this.lowerEndpoint) === 0) return true;
+      if (nxt !== null) {
+        const cmp = s.compare(nxt, this.lowerEndpoint);
+        this.assertComparable(other, cmp);
+        if (cmp === 0) return true;
+      }
     }
 
     return false;
@@ -539,8 +552,7 @@ export function defineRange<T>(scalar: Scalar<T>): RangeFactory<T> {
       new Range<T>(lower, BoundType.CLOSED, upper, BoundType.OPEN, scalar),
     closed: (lower, upper) =>
       new Range<T>(lower, BoundType.CLOSED, upper, BoundType.CLOSED, scalar),
-    open: (lower, upper) =>
-      new Range<T>(lower, BoundType.OPEN, upper, BoundType.OPEN, scalar),
+    open: (lower, upper) => new Range<T>(lower, BoundType.OPEN, upper, BoundType.OPEN, scalar),
     openClosed: (lower, upper) =>
       new Range<T>(lower, BoundType.OPEN, upper, BoundType.CLOSED, scalar),
     all: () => new Range<T>(negInf, BoundType.OPEN, posInf, BoundType.OPEN, scalar),

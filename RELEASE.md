@@ -10,8 +10,8 @@ approved**. The process is built so that state can never acquire a git tag.
 ## Why staged, not `npm publish`
 
 npm is restricting tokens that bypass 2FA for direct publishing. The registry
-returns the notice: *"npm tokens that bypass 2FA are being restricted for account
-changes and direct publishing"* (`gh.io/npm-gat-bypass2fa-deprecation`). A CI
+returns the notice: _"npm tokens that bypass 2FA are being restricted for account
+changes and direct publishing"_ (`gh.io/npm-gat-bypass2fa-deprecation`). A CI
 job cannot answer a 2FA challenge, so `npm publish` from CI is being closed off —
 which is what broke the first real release attempt.
 
@@ -158,7 +158,7 @@ If the package is still only **staged**, rollback is trivial: `npm stage reject`
 ## Repo-specific notes
 
 - **Never pass a package-spec to `npm stage publish`.** `npm stage publish range-ts`
-  resolves the name against the *registry*, not the working directory, and fails
+  resolves the name against the _registry_, not the working directory, and fails
   with "You cannot publish over the previously published versions". Publish the
   current directory by passing nothing (or `.`).
 - **Do not add `--omit=optional` to any install here.** TypeScript 7 ships its

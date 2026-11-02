@@ -116,7 +116,8 @@ export function scenarios(mod) {
       op: (m, n) => {
         let acc = 0;
         for (let i = 0; i < n; i++) if (m.get(i * STRIDE + 1) !== null) acc++;
-        if (acc === 0) throw new Error("get-hit scenario found no hits — measuring the wrong thing");
+        if (acc === 0)
+          throw new Error("get-hit scenario found no hits — measuring the wrong thing");
         return acc;
       },
     },
@@ -144,27 +145,41 @@ export function scenarios(mod) {
       // different structure would win; see docs/1.0.0-notes.md.
       //
       // MEASUREMENT CAVEAT, so nobody "fixes" this by tightening the gate.
-      // This workload is allocation-dominated: each round builds a 20-40k
-      // entry map and splits half of it, so the reading is sensitive to heap
-      // state. What actually destabilised it was a SHORT warmup, not a long
-      // one. Same code, n=20000 -> 40000, three passes each:
+      // This workload is allocation-dominated and the exponent is NOT
+      // resolvable to better than roughly +/-1.5 on a shared box. Measured on
+      // this build, current runner config (rounds=7, warmup=14), n=20000 ->
+      // 40000:
       //
-      //   warmup=1,  rounds=5  ->  p = 5.03 / 1.78 / 1.80   (one FAIL)
-      //   warmup=14, rounds=7  ->  p = 1.75 / 1.76 / 1.77   (tight)
+      //   this case ALONE, 12 runs      -> min 0.57, med 0.85, max 2.01
+      //   inside the FULL suite, 19 runs -> spread -0.19 .. 3.53
       //
-      // An earlier note here claimed the opposite — that MORE warmup made it
-      // worse (14 -> 1.44, 30 -> 2.20, 60 -> 4.76). That is not
-      // reproducible on this build and it was the justification people would
-      // cite to keep warmup low, which is what made the gate flaky. Re-measure
-      // before repeating it.
+      // The full-suite spread is the one that matters, because that is how the
+      // gate runs: eleven other scenarios ahead of it move the heap and the
+      // thermal state. At a 2.5 gate that spread failed 2 of 19 runs on
+      // unchanged code (~10%), which is exactly the failure mode this file's
+      // own notes warn about: a gate that fires at random trains people to
+      // ignore red. An earlier note here claimed this case read "1.75 / 1.76 /
+      // 1.77 (tight)"; that is a three-sample coincidence, not reproducible,
+      // and it was cited to justify a gate the measurements do not support.
       //
-      // Gate stays at 2.5: deliberately loose, catches only a gross regression
-      // past quadratic-plus. The real protection for this path is the
-      // differential test (3000+ randomised put/putCoalescing/remove
-      // sequences against the previous build, 0 data loss) and the other
-      // gated cases, not this number.
+      // Gate is 4.0: above the whole observed spread, so it passes reliably,
+      // and it still catches a gross regression. State the limit plainly —
+      // this row guards against super-quadratic-by-2x, NOT against a genuine
+      // cubic regression, which would land inside the noise.
+      //
+      // Which means the EXPONENT ROW IS NOT THE GUARD HERE — it is a tripwire
+      // for gross breakage only. The guard that actually bites is the baseline
+      // absolute-time ratio, so it is set explicitly tight on this row rather
+      // than inheriting the 3.0 default: paired runs read 0.99x-1.01x against
+      // the baseline, so 2.0 keeps ~2x headroom over run-to-run variation
+      // while still catching "still linear, twice as slow" — the regression
+      // class an exponent gate structurally cannot see. This is only
+      // trustworthy because run.mjs now refuses to compare against a baseline
+      // recorded at a different n; before that check, "primary guard" was
+      // doing its arithmetic across two problem sizes and meant nothing.
       name: "remove (many small interior cuts)",
-      maxExponent: 2.5,
+      maxExponent: 4.0,
+      maxRatioVsBaseline: 2.0,
       make: mkSeq,
       op: (m, n) => {
         for (let i = 0; i < n / 2; i++) {
@@ -184,9 +199,7 @@ export function scenarios(mod) {
       op: (m, n) => {
         const chunk = n / 32;
         for (let k = 0; k < 16; k++) {
-          m.remove(
-            NumberRange.closedOpen(k * chunk * STRIDE, (k + 1) * chunk * STRIDE)
-          );
+          m.remove(NumberRange.closedOpen(k * chunk * STRIDE, (k + 1) * chunk * STRIDE));
         }
       },
     },
@@ -211,9 +224,12 @@ export function scenarios(mod) {
       op: (m, n) => {
         let acc = 0;
         for (let i = 0; i < n / 10; i++) {
-          acc += m.subRangeMap(NumberRange.closedOpen(i * STRIDE, i * STRIDE + 1)).asMapOfRanges().size;
+          acc += m
+            .subRangeMap(NumberRange.closedOpen(i * STRIDE, i * STRIDE + 1))
+            .asMapOfRanges().size;
         }
-        if (acc === 0) throw new Error("small-window subRangeMap found nothing — measuring the wrong thing");
+        if (acc === 0)
+          throw new Error("small-window subRangeMap found nothing — measuring the wrong thing");
         return acc;
       },
     },

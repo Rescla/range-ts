@@ -220,7 +220,7 @@ describe("RangeMap", () => {
         expect(result[1][1]).toBe("a");
       });
 
-      it('should replace existing values', () => {
+      it("should replace existing values", () => {
         const rangeMap = new RangeMap<string>();
 
         rangeMap.putCoalescing(NumberRange.closedOpen(0, 24), "a");
@@ -232,7 +232,7 @@ describe("RangeMap", () => {
 
         expect(result[0][0].toString()).toBe("[0..24)");
         expect(result[0][1]).toBe("b");
-      })
+      });
     });
   });
 
@@ -278,9 +278,8 @@ describe("RangeMap", () => {
     });
   });
 
-
   describe("remove", () => {
-    it('should remove an identical range', () => {
+    it("should remove an identical range", () => {
       // Insert item with range, delete with said range, rangeMap should be empty
       const rangeMap = new RangeMap();
       const range = NumberRange.closedOpen(2, 10);
@@ -289,9 +288,9 @@ describe("RangeMap", () => {
       rangeMap.remove(range);
 
       expect(rangeMap.asMapOfRanges().size).toBe(0);
-    })
+    });
 
-    it('should remove encosed range', () => {
+    it("should remove encosed range", () => {
       // Insert item with range, delete with larger range, rangemap should be empty
       const rangeMap = new RangeMap();
       const itemRange = NumberRange.closedOpen(3, 9);
@@ -301,9 +300,9 @@ describe("RangeMap", () => {
       rangeMap.remove(removeRange);
 
       expect(rangeMap.asMapOfRanges().size).toBe(0);
-    })
+    });
 
-    it('should truncate range when partial overlapped', () => {
+    it("should truncate range when partial overlapped", () => {
       const rangeMap = new RangeMap();
       const itemRange = NumberRange.closedOpen(1, 5);
       const removeRange = NumberRange.closedOpen(3, 10);
@@ -311,12 +310,12 @@ describe("RangeMap", () => {
       rangeMap.putCoalescing(itemRange, 4);
       rangeMap.remove(removeRange);
 
-      const result = rangeMap.asMapOfRanges()
+      const result = rangeMap.asMapOfRanges();
       expect(result.size).toBe(1);
-      expect([...result.entries()][0]).toEqual([NumberRange.closedOpen(1, 3), 4])
+      expect([...result.entries()][0]).toEqual([NumberRange.closedOpen(1, 3), 4]);
     });
 
-    it('should truncate range when contained', () => {
+    it("should truncate range when contained", () => {
       const rangeMap = new RangeMap();
       const itemRange = NumberRange.closedOpen(1, 10);
       const removeRange = NumberRange.closedOpen(3, 5);
@@ -324,13 +323,13 @@ describe("RangeMap", () => {
       rangeMap.putCoalescing(itemRange, 4);
       rangeMap.remove(removeRange);
 
-      const result = rangeMap.asMapOfRanges()
+      const result = rangeMap.asMapOfRanges();
       expect(result.size).toBe(2);
-      expect([...result.entries()][0]).toEqual([NumberRange.closedOpen(1, 3), 4])
-      expect([...result.entries()][1]).toEqual([NumberRange.closedOpen(5, 10), 4])
+      expect([...result.entries()][0]).toEqual([NumberRange.closedOpen(1, 3), 4]);
+      expect([...result.entries()][1]).toEqual([NumberRange.closedOpen(5, 10), 4]);
     });
 
-    it('should not touch connected but not overlapping ranges' , () => {
+    it("should not touch connected but not overlapping ranges", () => {
       const rangeMap = new RangeMap();
       const itemRange = NumberRange.closedOpen(1, 5);
       const removeRange = NumberRange.closedOpen(5, 10);
@@ -338,12 +337,12 @@ describe("RangeMap", () => {
       rangeMap.putCoalescing(itemRange, 4);
       rangeMap.remove(removeRange);
 
-      const result = rangeMap.asMapOfRanges()
+      const result = rangeMap.asMapOfRanges();
       expect(result.size).toBe(1);
-      expect([...result.entries()][0]).toEqual([NumberRange.closedOpen(1, 5), 4])
-    })
+      expect([...result.entries()][0]).toEqual([NumberRange.closedOpen(1, 5), 4]);
+    });
 
-    it('should not touch non-overlapping ranges', () => {
+    it("should not touch non-overlapping ranges", () => {
       // Insert item with range, delete with non-connecting range
       const rangeMap = new RangeMap();
       const itemRange = NumberRange.closedOpen(1, 3);
@@ -352,32 +351,45 @@ describe("RangeMap", () => {
       rangeMap.putCoalescing(itemRange, 4);
       rangeMap.remove(removeRange);
 
-      const result = rangeMap.asMapOfRanges()
+      const result = rangeMap.asMapOfRanges();
       expect(result.size).toBe(1);
-      expect([...result.entries()][0]).toEqual([NumberRange.closedOpen(1, 3), 4])
-    })
+      expect([...result.entries()][0]).toEqual([NumberRange.closedOpen(1, 3), 4]);
+    });
   });
 
-  describe('issues', () => {
-    it('should correctly preserve positive and negative infinity range endpoints wwith putCoalescing', () => {
+  describe("issues", () => {
+    it("should correctly preserve positive and negative infinity range endpoints wwith putCoalescing", () => {
       const rangeMap = new RangeMap(isEqual);
 
       rangeMap.put(NumberRange.all(), []);
-      rangeMap.putCoalescing(NumberRange.closedOpen(1834354800000, 1834441200000), 'ab934de2-99be-4d01-8086-9b21082665c9');
+      rangeMap.putCoalescing(
+        NumberRange.closedOpen(1834354800000, 1834441200000),
+        "ab934de2-99be-4d01-8086-9b21082665c9"
+      );
       check();
-      rangeMap.putCoalescing(NumberRange.closedOpen(1751320800000, 1751493600000), 'e4fe9b11-b33b-4a9d-8f82-893fa543d8ed');
+      rangeMap.putCoalescing(
+        NumberRange.closedOpen(1751320800000, 1751493600000),
+        "e4fe9b11-b33b-4a9d-8f82-893fa543d8ed"
+      );
       check();
-      rangeMap.putCoalescing(NumberRange.closedOpen(1751320800000, 1752098400000), 'a546e6f6-796c-45c9-9ea1-91610d23ef04');
+      rangeMap.putCoalescing(
+        NumberRange.closedOpen(1751320800000, 1752098400000),
+        "a546e6f6-796c-45c9-9ea1-91610d23ef04"
+      );
       check(); // This check failed, lower bound with NEGATIVE_INFINITY was missing.
 
       function check() {
         const resultEntries = [...rangeMap.asMapOfRanges().entries()];
-        expect(resultEntries.some(([range, value]) => range.lowerEndpoint === Number.NEGATIVE_INFINITY)).toBeTrue();
-        expect(resultEntries.some(([range, value]) => range.upperEndpoint === Number.POSITIVE_INFINITY)).toBeTrue();
+        expect(
+          resultEntries.some(([range, value]) => range.lowerEndpoint === Number.NEGATIVE_INFINITY)
+        ).toBeTrue();
+        expect(
+          resultEntries.some(([range, value]) => range.upperEndpoint === Number.POSITIVE_INFINITY)
+        ).toBeTrue();
       }
-    })
+    });
 
-    it('should return the correct span if the same range is added multiple times with put', () => {
+    it("should return the correct span if the same range is added multiple times with put", () => {
       const rangeMap = new RangeMap(isEqual);
 
       rangeMap.put(NumberRange.closedOpen(1590962400000, 1622498400000), 1);
@@ -386,9 +398,9 @@ describe("RangeMap", () => {
       rangeMap.put(NumberRange.closedOpen(1590962400000, 1622498400000), 3);
       rangeMap.put(NumberRange.closedOpen(1616281200000, 1648076400000), 4);
 
-      expect(rangeMap.span()).toEqual(NumberRange.closedOpen(1590962400000, 1648076400000))
-    })
-  })
+      expect(rangeMap.span()).toEqual(NumberRange.closedOpen(1590962400000, 1648076400000));
+    });
+  });
 });
 
 describe("README example", () => {
@@ -423,9 +435,7 @@ describe("README example", () => {
     attendance.forEach(({ name, days }) => {
       days.forEach((day) => {
         const dayRange = NumberRange.closedOpen(day, day + 1);
-        const subRangeMap = festivalAttendanceRangeMap
-          .subRangeMap(dayRange)
-          .asMapOfRanges();
+        const subRangeMap = festivalAttendanceRangeMap.subRangeMap(dayRange).asMapOfRanges();
 
         // Iterate over all existing entries for the given day
         // Not really necessary in this example, but this will handle any periods that do not span the entire day as well
@@ -536,6 +546,70 @@ describe("an empty range associates nothing", () => {
     expect(m.asMapOfValues().size).toBe(0);
   });
 
+  describe("but putCoalescing may use an empty range as a bridge", () => {
+    // Guava's comment on this exact spot: "don't short-circuit if the range
+    // is empty - it may be between two ranges we can coalesce." The empty
+    // range is the bridge, and guarding it away silently dropped the merge
+    // the caller explicitly asked for.
+    it("merges two adjacent same-value ranges across an empty putCoalescing", () => {
+      const m = new RangeMap<string>();
+      m.put(NumberRange.closedOpen(0, 1), "a");
+      m.put(NumberRange.closedOpen(1, 2), "a");
+      expect(m.asMapOfRanges().size).toBe(2);
+
+      m.putCoalescing(NumberRange.closedOpen(1, 1), "a");
+
+      expect([...m.asMapOfRanges().entries()].map(([k, v]) => k.toString() + "=" + v)).toEqual([
+        "[0..2)=a",
+      ]);
+      expect(m.get(0)).toBe("a");
+      expect(m.get(1.5)).toBe("a");
+      expect(m.span()!.toString()).toBe("[0..2)");
+    });
+
+    it("stays a no-op when the empty range bridges nothing", () => {
+      const m = new RangeMap<string>();
+      m.put(NumberRange.closedOpen(0, 1), "b");
+      m.putCoalescing(NumberRange.closedOpen(5, 5), "a");
+
+      expect(m.asMapOfRanges().size).toBe(1);
+      expect(m.get(5)).toBeNull();
+      expect(m.span()!.toString()).toBe("[0..1)");
+    });
+
+    it("stays a no-op when the neighbours carry different values", () => {
+      const m = new RangeMap<string>();
+      m.put(NumberRange.closedOpen(0, 1), "x");
+      m.put(NumberRange.closedOpen(1, 2), "y");
+      m.putCoalescing(NumberRange.closedOpen(1, 1), "z");
+
+      expect(m.asMapOfRanges().size).toBe(2);
+      expect(m.get(0.5)).toBe("x");
+      expect(m.get(1.5)).toBe("y");
+    });
+
+    it("absorbs one same-value neighbour without changing its extent", () => {
+      const m = new RangeMap<string>();
+      m.put(NumberRange.closedOpen(0, 1), "a");
+      m.putCoalescing(NumberRange.closedOpen(1, 1), "a");
+
+      expect([...m.asMapOfRanges().keys()].map((k) => k.toString())).toEqual(["[0..1)"]);
+      expect(m.get(0.5)).toBe("a");
+    });
+
+    it("put of an empty range still never bridges", () => {
+      // The bridge is a putCoalescing feature. Plain `put` must keep its
+      // hard no-op, or the empty-entry-stretches-the-span bug returns.
+      const m = new RangeMap<string>();
+      m.put(NumberRange.closedOpen(0, 1), "a");
+      m.put(NumberRange.closedOpen(1, 2), "a");
+      m.put(NumberRange.closedOpen(1, 1), "a");
+
+      expect(m.asMapOfRanges().size).toBe(2);
+      expect(m.span()!.toString()).toBe("[0..2)");
+    });
+  });
+
   it("remove of an empty range is a no-op that strands nothing", () => {
     const m = new RangeMap<string>();
     m.put(NumberRange.closedOpen(0, 10), "a");
@@ -599,10 +673,7 @@ describe("an empty range associates nothing", () => {
       m.putCoalescing(NumberRange.openClosed(15, 16), "c");
 
       const result = Array.from(m.asMapOfRanges().entries());
-      expect(result.map((e) => e[0].toString())).toEqual([
-        "(12..13)",
-        "[13..16]",
-      ]);
+      expect(result.map((e) => e[0].toString())).toEqual(["(12..13)", "[13..16]"]);
     });
 
     it("absorbs both sides in one call and loses nothing", () => {
@@ -635,10 +706,7 @@ describe("an empty range associates nothing", () => {
       // Merges left into [0..10] (touching, equal), but the 'b' entry only
       // gets truncated — differing values never coalesce.
       const result = Array.from(m.asMapOfRanges().entries());
-      expect(result.map((e) => `${e[0]}=>${e[1]}`)).toEqual([
-        "[0..10]=>a",
-        "(10..15]=>b",
-      ]);
+      expect(result.map((e) => `${e[0]}=>${e[1]}`)).toEqual(["[0..10]=>a", "(10..15]=>b"]);
     });
   });
 
@@ -657,11 +725,7 @@ describe("an empty range associates nothing", () => {
     it("closed write inside an entry splits it into three", () => {
       const m = base();
       m.put(NumberRange.closed(13, 16), "b");
-      expect(snap(m)).toEqual([
-        "[10..13)=>a",
-        "[13..16]=>b",
-        "(16..20]=>a",
-      ]);
+      expect(snap(m)).toEqual(["[10..13)=>a", "[13..16]=>b", "(16..20]=>a"]);
     });
 
     it("open write inside an entry flips both leftover boundaries", () => {
@@ -670,11 +734,7 @@ describe("an empty range associates nothing", () => {
       // piece CLOSED at the value.
       const m = base();
       m.put(NumberRange.open(13, 16), "b");
-      expect(snap(m)).toEqual([
-        "[10..13]=>a",
-        "(13..16)=>b",
-        "[16..20]=>a",
-      ]);
+      expect(snap(m)).toEqual(["[10..13]=>a", "(13..16)=>b", "[16..20]=>a"]);
     });
 
     it("write aligned with the left edge produces no left leftover", () => {
@@ -724,11 +784,7 @@ describe("an empty range associates nothing", () => {
       m.put(NumberRange.closed(0, 5), "a");
       m.put(NumberRange.closed(20, 25), "c");
       m.put(NumberRange.closed(10, 15), "b");
-      expect(snap(m)).toEqual([
-        "[0..5]=>a",
-        "[10..15]=>b",
-        "[20..25]=>c",
-      ]);
+      expect(snap(m)).toEqual(["[0..5]=>a", "[10..15]=>b", "[20..25]=>c"]);
     });
 
     it("write straddling two entries merges their span", () => {
@@ -736,11 +792,7 @@ describe("an empty range associates nothing", () => {
       m.put(NumberRange.closed(0, 5), "a");
       m.put(NumberRange.closed(10, 15), "c");
       m.put(NumberRange.closed(3, 12), "b");
-      expect(snap(m)).toEqual([
-        "[0..3)=>a",
-        "[3..12]=>b",
-        "(12..15]=>c",
-      ]);
+      expect(snap(m)).toEqual(["[0..3)=>a", "[3..12]=>b", "(12..15]=>c"]);
     });
   });
 

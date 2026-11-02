@@ -179,9 +179,23 @@ export const bigintScalar: Scalar<BigIntPoint> = {
     if (a === BIGINT_PLUS_INFINITY) return b === BIGINT_PLUS_INFINITY ? 0 : 1;
     if (b === BIGINT_MINUS_INFINITY) return 1;
     if (b === BIGINT_PLUS_INFINITY) return -1;
+    // Same gate `comparableScalar` applies. Without it `<`/`>` coerce, and a
+    // coercion that lands on NaN makes BOTH relational tests false, so the
+    // old fall-through reported `compare(4n, "x") === 0` — a bigint range that
+    // `contains("x")`, `encloses("x")` and treats as equal to a point it is
+    // not. It also made the cross-domain guard in `Range` unreachable: that
+    // guard fires on an UNORDERED result, and this comparator never produced
+    // one. `number` is accepted alongside `bigint` because JS defines that
+    // cross-type ordering exactly; a string has no defined ordering against a
+    // number and its result is a coercion artifact.
+    if (!isNumericPrimitive(a) || !isNumericPrimitive(b)) return NaN;
     if (a < b) return -1;
     if (a > b) return 1;
-    return 0;
+    // Neither relational test held. For bigint against number that means
+    // numeric equality — `4n == 4` is true while `4n === 4` is false — and
+    // that IS the ordering JS defines, so it must report 0. Anything else
+    // reaching here (a NaN operand) is unordered, not equal.
+    return (a as unknown) == (b as unknown) ? 0 : NaN;
   },
 
   minusInfinity: BIGINT_MINUS_INFINITY,

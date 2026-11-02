@@ -98,13 +98,14 @@ for (const file of walk(join(DIST, "esm"))) {
 
 console.log(
   `finalize-dist: scanned ${filesScanned} esm files, rewrote ${specifiersRewritten} ` +
-  `specifier(s) in ${filesRewritten} file(s); wrote esm=module, cjs=commonjs markers`
+    `specifier(s) in ${filesRewritten} file(s); wrote esm=module, cjs=commonjs markers`
 );
 
 if (leftovers.length > 0) {
   console.error(
     `finalize-dist: FAILED — ${leftovers.length} extensionless relative specifier(s) ` +
-    `still present in dist/esm. Node cannot load these.\n  ` + leftovers.join("\n  ")
+      `still present in dist/esm. Node cannot load these.\n  ` +
+      leftovers.join("\n  ")
   );
   process.exit(1);
 }

@@ -124,7 +124,11 @@ describe("Range<T> over an exact scalar", () => {
     });
 
     it("spans across an unbounded side", () => {
-      expect(R.closed(B(1), B(5)).span(R.atLeast(B(12))).toString()).toBe("[1..+∞)");
+      expect(
+        R.closed(B(1), B(5))
+          .span(R.atLeast(B(12)))
+          .toString()
+      ).toBe("[1..+∞)");
       expect(R.all().toString()).toBe("(-∞..+∞)");
     });
 
@@ -230,19 +234,39 @@ describe("Range<T> over an exact scalar", () => {
 
   describe("bound merging on equal endpoints", () => {
     it("span keeps CLOSED if either side is closed", () => {
-      expect(R.closed(B(1), B(5)).span(R.openClosed(B(1), B(9))).toString()).toBe("[1..9]");
+      expect(
+        R.closed(B(1), B(5))
+          .span(R.openClosed(B(1), B(9)))
+          .toString()
+      ).toBe("[1..9]");
       // (1..5) is contained in [1..9], so the minimal enclosing range is [1..9]:
       // the lower merge picks CLOSED, and the upper comes from the wider side.
-      expect(R.open(B(1), B(5)).span(R.closed(B(1), B(9))).toString()).toBe("[1..9]");
+      expect(
+        R.open(B(1), B(5))
+          .span(R.closed(B(1), B(9)))
+          .toString()
+      ).toBe("[1..9]");
     });
 
     it("span stays OPEN only when both sides are open", () => {
-      expect(R.open(B(1), B(5)).span(R.open(B(1), B(9))).toString()).toBe("(1..9)");
+      expect(
+        R.open(B(1), B(5))
+          .span(R.open(B(1), B(9)))
+          .toString()
+      ).toBe("(1..9)");
     });
 
     it("intersection takes OPEN if either side is open", () => {
-      expect(R.closed(B(1), B(5)).intersection(R.openClosed(B(1), B(9)))!.toString()).toBe("(1..5]");
-      expect(R.closed(B(1), B(9)).intersection(R.closed(B(1), B(5)))!.toString()).toBe("[1..5]");
+      expect(
+        R.closed(B(1), B(5))
+          .intersection(R.openClosed(B(1), B(9)))!
+          .toString()
+      ).toBe("(1..5]");
+      expect(
+        R.closed(B(1), B(9))
+          .intersection(R.closed(B(1), B(5)))!
+          .toString()
+      ).toBe("[1..5]");
     });
   });
 

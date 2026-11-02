@@ -8,10 +8,7 @@
     "noImplicitReturns": true,
     "stripInternal": false,
     "noEmit": true,
-    "lib": [
-      "esnext",
-      "dom"
-    ],
+    "lib": ["esnext", "dom"],
     "target": "esnext"
   }
 }

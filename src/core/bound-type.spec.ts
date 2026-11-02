@@ -49,7 +49,9 @@ describe("BoundType validation", () => {
     // either one makes the message less useful at the exact moment someone is
     // reading it under pressure.
     expect(() => assertBoundType("open" as any, "lowerBoundType")).toThrowError(/got "open"\./);
-    expect(() => assertBoundType(undefined as any, "upperBoundType")).toThrowError(/got undefined\./);
+    expect(() => assertBoundType(undefined as any, "upperBoundType")).toThrowError(
+      /got undefined\./
+    );
     expect(() => assertBoundType(7 as any, "lowerBoundType")).toThrowError(/got 7\./);
     expect(() => assertBoundType(null as any, "lowerBoundType")).toThrowError(/got null\./);
     // An object is the case where the two branches genuinely differ:
@@ -82,12 +84,12 @@ describe("BoundType validation", () => {
   });
 
   it("rejects a bad bound type at Range construction, both sides", () => {
-    expect(
-      () => new Range(1, "OPENN" as any, 5, BoundType.CLOSED, comparableScalar)
-    ).toThrowError(/lowerBoundType/);
-    expect(
-      () => new Range(1, BoundType.CLOSED, 5, "" as any, comparableScalar)
-    ).toThrowError(/upperBoundType/);
+    expect(() => new Range(1, "OPENN" as any, 5, BoundType.CLOSED, comparableScalar)).toThrowError(
+      /lowerBoundType/
+    );
+    expect(() => new Range(1, BoundType.CLOSED, 5, "" as any, comparableScalar)).toThrowError(
+      /upperBoundType/
+    );
     expect(() => NumberRange.closed(1, 2 as any)).not.toThrow();
   });
 

@@ -57,24 +57,75 @@ const SMALL = Number(process.env.BENCH_N || 20000);
 // WARMUP IS NOT COSMETIC AND MUST NOT BE PINNED LOW HERE.
 // harness.timeOp's own comment documents that `warmup: 1, rounds: 5` samples
 // entirely from the pre-optimisation band, and this runner is the only caller.
-// Measured on this build, same code, n=20000 -> 40000, three passes each:
-//
-//   warmup=1,  rounds=5  ->  interior-remove p = 5.03 / 1.78 / 1.80  (1 FAIL)
-//   warmup=14, rounds=7  ->  interior-remove p = 1.75 / 1.76 / 1.77  (0 FAIL)
-//
-// The previous value here (`rounds: 5, warmup: 1`) was exactly the broken
+// The previous value here (`rounds: 5, warmup: 1`) was exactly that broken
 // configuration, so `bench:check` failed roughly one run in two on unchanged
 // code. Both knobs are env-overridable so a run can be reproduced exactly.
+//
+// Do NOT read the current settings as making every case tight. Warmup fixes the
+// pre-optimisation band; it does not fix inter-scenario heap and thermal drift.
+// The interior-remove case still spreads -0.19 .. 3.53 across full-suite runs
+// while reading 0.57 .. 2.01 in isolation — see the note on that case in
+// cases.mjs, which is where its gate is set and justified.
 const OPTS = {
   rounds: Number(process.env.BENCH_ROUNDS || 7),
   warmup: Number(process.env.BENCH_WARMUP || 14),
 };
+
+/*
+ * THE BASELINE IS CALIBRATED AT ONE SIZE, AND BOTH GATES ASSUME THAT SIZE.
+ *
+ * The exponent gates were tuned at n=20000 and the drift gate compares
+ * ABSOLUTE times. Neither is valid at another n, and running `bench:check`
+ * with a different BENCH_N proved it: at n=40000 against a 20000 baseline
+ * the run reported 4 failures, 3 of them pure size mismatch -- doing twice
+ * the work reads 2x-3.4x "drift", which is expected cost, not a
+ * regression. (The fourth, `asMapOfRanges` at O(n^1.55), was a genuine
+ * exponent wobble that only appears at the larger size.)
+ *
+ * So a size mismatch in check mode is a CONFIGURATION ERROR, not a gate
+ * failure and not a pass. Failing it as a gate would be a false alarm;
+ * letting it pass would make BENCH_N a way to switch the gate off without
+ * anyone noticing. Checked BEFORE the suite runs, so a wrong size costs
+ * nothing instead of four minutes.
+ *
+ * In report mode the mismatch is only a warning: exploring at another size
+ * is legitimate, it just does not produce a verdict.
+ */
+const BASE_N = base.smallN ?? null;
+const sizeMismatch = BASE_N !== null && SMALL !== BASE_N;
+
+if (mode === "check") {
+  if (!existsSync(BASELINE)) {
+    console.error("\nbench:check: no baseline.json — run `npm run bench:baseline` first");
+    process.exit(2);
+  }
+  if (sizeMismatch) {
+    console.error(
+      `\nbench:check: size mismatch — running at n=${SMALL}, but the baseline was ` +
+        `recorded at n=${BASE_N}.\n` +
+        `  Both gates (exponent thresholds and the drift ratio) are calibrated against ` +
+        `that size and\n  are meaningless at another one. Either drop BENCH_N, or ` +
+        `re-record the baseline\n  at the new size with \`npm run bench:baseline\` ` +
+        `(which re-calibrates every gate).\n` +
+        `  Nothing was measured and nothing was changed.`
+    );
+    process.exit(2);
+  }
+}
 
 console.log(`RangeMap performance suite`);
 console.log(`  lib: ${libPath}`);
 console.log(
   `  n: ${SMALL} -> ${SMALL * 2}   rounds: ${OPTS.rounds}   warmup: ${OPTS.warmup}   mode: ${mode}\n`
 );
+
+if (sizeMismatch) {
+  console.log(
+    `  WARNING: baseline was recorded at n=${BASE_N}; this run is at n=${SMALL}. ` +
+      `Absolute-time\n           drift is not comparable and is reported as n/a. ` +
+      `Exponent rows are exploratory.\n`
+  );
+}
 
 const report = new Report();
 const fresh = {};
@@ -113,10 +164,6 @@ if (mode === "baseline") {
 }
 
 if (mode === "check") {
-  if (!existsSync(BASELINE)) {
-    console.error("\nbench:check: no baseline.json — run `npm run bench:baseline` first");
-    process.exit(2);
-  }
   if (failures.length) {
     console.error(`\nbench:check FAILED — ${failures.length} measurement(s) out of bounds`);
     for (const f of failures) console.error(`  - ${f.name}`);

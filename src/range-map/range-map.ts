@@ -25,11 +25,7 @@ import { Range } from "../range/range";
  */
 export type DefaultRange<P> = [P] extends [Comparable] ? NumberRange : Range<P>;
 
-export interface RangeValue<
-  T,
-  P = Comparable,
-  R extends Range<any> = DefaultRange<P>
-> {
+export interface RangeValue<T, P = Comparable, R extends Range<any> = DefaultRange<P>> {
   range: R;
   value: T;
 }
@@ -81,13 +77,7 @@ function compareLower<P>(a: Range<P>, b: Range<P>): number {
  * Compare two cuts (endpoint, side) under the ordering documented on the
  * class: value first, then side, with "below before above".
  */
-function cmpCut(
-  scalar: Scalar<any>,
-  v1: any,
-  s1: number,
-  v2: any,
-  s2: number
-): number {
+function cmpCut(scalar: Scalar<any>, v1: any, s1: number, v2: any, s2: number): number {
   const c = scalar.compare(v1, v2);
   return c !== 0 ? c : s1 - s2;
 }
@@ -99,13 +89,7 @@ function likeRange<P, R extends Range<P>>(
   upper: P,
   upperBound: BoundType
 ): R {
-  const Ctor = proto.constructor as new (
-    a: P,
-    b: BoundType,
-    c: P,
-    d: BoundType,
-    e?: unknown
-  ) => R;
+  const Ctor = proto.constructor as new (a: P, b: BoundType, c: P, d: BoundType, e?: unknown) => R;
 
   // Bounded reflection. This is the one place in the library that calls a
   // constructor it did not name, and `proto.constructor` is a live reference
@@ -291,8 +275,7 @@ export class RangeMap<T, P = Comparable, R extends Range<any> = DefaultRange<P>>
    * cut, and the neighbour that merges on the right is exactly the one whose
    * lower cut EQUALS ours — `[2,6)` and `[6,7)` touch because the cut both
    * sit at (6,0). Using the `>=` search minus one here returns the entry
-   * BELOW that instead and silently skips the merge, which is how 53 of 2972
-   * randomised sequences against the previous implementation diverged.
+   * BELOW that instead and silently skips the merge.
    */
   private firstLowerCutAfter(scalar: Scalar<any>, value: any, side: number): number {
     const a = this.rangeValues;
@@ -416,10 +399,7 @@ export class RangeMap<T, P = Comparable, R extends Range<any> = DefaultRange<P>>
       }
     }
 
-    const replacement =
-      insert === null
-        ? [...left, ...right]
-        : [...left, insert, ...right];
+    const replacement = insert === null ? [...left, ...right] : [...left, insert, ...right];
 
     entries.splice(start, end - start, ...replacement);
   }
@@ -490,10 +470,38 @@ export class RangeMap<T, P = Comparable, R extends Range<any> = DefaultRange<P>>
 
   constructor(private eq: (a: T, b: T) => boolean = (a, b) => a === b) {}
 
+  /**
+   * Associates `value` with every point of `range`, replacing whatever was
+   * there. Splitting any overlapped entry rather than storing overlaps.
+   *
+   * `null` is an accepted value. Guava rejects it because `null` is its own
+   * absent-sentinel; here `get` already returns `null` for "no entry", so
+   * storing `null` is consistent with a plain JS `Map` (`m.set(k, null)`).
+   * The consequence is that a point mapped to `null` and a point with no
+   * entry at all are indistinguishable via `get` — use `getEntry(k)`, which
+   * returns `null` only when no entry covers `k`.
+   */
   put(range: R, value: T): void {
     this.combinedPut(range, value, false);
   }
 
+  /**
+   * Like `put`, but merges with adjacent entries that already hold an
+   * `eq`-equal value instead of re-writing them.
+   *
+   * Two things a Guava porter should know:
+   *
+   * 1. **Merging is more aggressive than Guava.** This can absorb more than
+   *    the two immediate neighbours Guava would take (see the note in
+   *    `combinedPut`). No point mapping changes and no differently-valued
+   *    entry can be clobbered, but `getEntry(k)` / `asMapOfRanges()` after
+   *    a coalescing write are the CURRENT PARTITION, not a record of what
+   *    was inserted. Do not rely on entry granularity.
+   *
+   * 2. **An empty range is a bridge, not a no-op.** `putCoalescing([1..1), a)`
+   *    on `{ [0..1)=a, [1..2)=a }` yields `{ [0..2)=a }`. Plain `put` of
+   *    the same empty range still does nothing.
+   */
   putCoalescing(range: R, value: T): void {
     this.combinedPut(range, value, true);
   }
@@ -520,6 +528,19 @@ export class RangeMap<T, P = Comparable, R extends Range<any> = DefaultRange<P>>
    *
    * The Map is a new object; its keys and values are the SAME references the
    * map holds — see the mutation note on `get`.
+   *
+   * WARNING — `Range` has no value equality, so this Map is keyed by range
+   * IDENTITY. `asMapOfRanges().get(someRangeICraftedToMatch)` is `undefined`
+   * unless it is the very object the map stores, because JS `Map` uses
+   * SameValueZero and there is no `equals`/`hashCode` hook to override it.
+   * This is not fixable without replacing `Map` with a custom keyed type.
+   * To look anything up, go through the POINT, not the range:
+   *
+   *   map.get(key)         // value covering `key`, or null
+   *   map.getEntry(key)    // the { range, value } covering `key`, or null
+   *
+   * Iterate it, or index it yourself by `range.toString()` if you need
+   * range-as-key lookups.
    */
   asMapOfRanges(): Map<R, T> {
     const newMap = new Map<R, T>();
@@ -552,7 +573,27 @@ export class RangeMap<T, P = Comparable, R extends Range<any> = DefaultRange<P>>
   }
 
   /**
-   * Returns a view of the part of this range map that intersects with range.
+   * Returns an INDEPENDENT SNAPSHOT of the part of this map that intersects
+   * `range` — NOT a live view.
+   *
+   * This differs from Guava, whose `SubRangeMap` writes through to its
+   * parent. Here:
+   *
+   *   sub.put(...)   ->  affects the SUBMAP ONLY. The parent is unchanged.
+   *
+   * Values, however, are shared by reference, so mutating a VALUE you read
+   * through the submap does reach the parent's entry:
+   *
+   *   parent.put([0..10), [])
+   *   parent.subRangeMap([2..5)).get(3).push("x")   // parent.get(0) -> ["x"]
+   *
+   * Structure is copied, values are not. To change the parent's mapping,
+   * write to the parent — which is what the README example does.
+   *
+   * The ranges in the returned map are instances of the SAME class as the
+   * ranges this map holds, not the base `Range` the intersection machinery
+   * builds (see the rebuild in the body). `subRangeMap(...).asMapOfRanges()`
+   * on a map of `NumberRange`s yields `NumberRange`s.
    *
    * The returned map carries this map's equality function. Dropping it was a
    * bug: `putCoalescing` on a submap decided "same value" by `===` while the
@@ -560,10 +601,6 @@ export class RangeMap<T, P = Comparable, R extends Range<any> = DefaultRange<P>>
    * README shows (a `RangeMap<string[]>` built with lodash `isEqual`, read back
    * through `subRangeMap`) would coalesce correctly on the parent and silently
    * stop coalescing the moment it went through a submap.
-   *
-   * The submap is a new map holding new range objects, but the VALUES are
-   * shared with the parent by reference: mutating a value obtained through a
-   * submap writes through to the parent's entry. See the note on `get`.
    *
    * WHY IT BOUNDS THE WINDOW. This used to `flatMap` over EVERY entry in the
    * map and intersect each one, so a submap of one entry out of a million
@@ -595,17 +632,33 @@ export class RangeMap<T, P = Comparable, R extends Range<any> = DefaultRange<P>>
     const rangeValues: RangeValue<T, P, R>[] = [];
     for (let i = start; i < end; i++) {
       const rangeValue = entries[i];
-      // The intersection is built by the range machinery, which returns the base
-      // class; the map's own R is the honest type because every range it holds is
-      // an R and `intersection` preserves the receiver's class.
-      const intersection = rangeValue.range.intersection(range) as R | null;
+      const intersection = rangeValue.range.intersection(range);
 
       if (!intersection || intersection.isEmpty()) {
         continue;
       }
 
+      // Rebuilt through `likeRange`, not cast.
+      //
+      // `Range.intersection` constructs `new Range<T>(...)` directly -- it does
+      // NOT go through `likeRange` -- so on its own it flattens a map of
+      // `NumberRange`s to base `Range`s while this method's signature still says
+      // `R`. Rebuilding off the stored entry (which IS an `R`) gives the caller
+      // the class the type promises, which is the contract this library already
+      // has elsewhere: `span()` preserves the subclass and a spec pins it
+      // (`m.span() instanceof NumberRange`).
+      //
+      // The bounds are taken from the intersection result, so the cut logic is
+      // unchanged; only the constructor differs. No cast needed: `likeRange`
+      // returns `R`.
       rangeValues.push({
-        range: intersection,
+        range: likeRange(
+          rangeValue.range,
+          intersection.lowerEndpoint,
+          intersection.lowerBoundType,
+          intersection.upperEndpoint,
+          intersection.upperBoundType
+        ),
         value: rangeValue.value,
       });
     }
@@ -696,20 +749,29 @@ export class RangeMap<T, P = Comparable, R extends Range<any> = DefaultRange<P>>
    * flagged that a flipped default changed nothing. `put` and `putCoalescing`
    * are the public surface; this stays an internal, fully-specified helper.
    */
-  private combinedPut(
-    range: R,
-    value: T,
-    shouldPutCoalescing: boolean
-  ): void {
-    // An empty range associates the value with nothing, so writing it is a
-    // no-op — which is what Guava does, and what the rest of this class
-    // already assumes (`remove` guards the same way). Accepting it used to
-    // store the entry, where it was invisible to `asMapOfRanges`/`asMapOfValues`
-    // (both filter empties) but still visible to `span`, so `put([0..1), 'a')`
-    // followed by `put([100..100), 'b')` reported a span of `[0..100)` for a
-    // map that visibly holds one entry. Fixing it at the write side rather
-    // than at each reader, so no future reader inherits the same trap.
-    if (range.isEmpty()) {
+  private combinedPut(range: R, value: T, shouldPutCoalescing: boolean): void {
+    // An empty range associates the value with nothing — but only for `put`
+    // is that the same thing as "do nothing".
+    //
+    // For `put` it is a no-op and must stay one. Accepting an empty used to
+    // store the entry, where it was invisible to `asMapOfRanges` /
+    // `asMapOfValues` (both filter empties) but still visible to `span`, so
+    // `put([0..1), 'a')` then `put([100..100), 'b')` reported a span of
+    // `[0..100)` for a map that visibly holds one entry. Fixed at the write
+    // side rather than at each reader, so no future reader inherits the trap.
+    //
+    // For `putCoalescing` it is NOT a no-op. Guava's comment on this exact
+    // spot reads "don't short-circuit if the range is empty - it may be
+    // between two ranges we can coalesce", and that is a real feature: the
+    // empty range is the bridge.
+    //
+    //   map = { [0..1)=a, [1..2)=a }
+    //   putCoalescing([1..1), a)   ->  { [0..2)=a }
+    //
+    // Guarding it away silently dropped the merge the caller explicitly asked
+    // for. So the probes run, and the write is skipped only if nothing was
+    // absorbed — see the `next.isEmpty()` guard below.
+    if (range.isEmpty() && !shouldPutCoalescing) {
       return;
     }
 
@@ -717,22 +779,35 @@ export class RangeMap<T, P = Comparable, R extends Range<any> = DefaultRange<P>>
 
     // --- coalescing: two lookups, never a scan ---
     //
-    // Mirrors Guava's putCoalescing: absorb the neighbour whose lower cut
-    // sits just below ours, then the one whose lower cut is at or below our
-    // upper cut, if either carries the same value and touches. Each is one
-    // binary search plus one splice. The second probe runs against the
-    // ALREADY-MUTATED array, so indices stay honest after the first removal
-    // shifts everything above it down by one.
+    // Absorb the neighbour whose lower cut sits just below ours, then the one
+    // whose lower cut is at or below our upper cut, if it carries the same
+    // value and touches. Each is one binary search plus one splice.
+    //
+    // NOT identical to Guava here, and deliberately so. Guava computes both
+    // probes against the UNMUTATED map (its `coalescedRange` is documented
+    // "does not mutate the map") and keys them off the original range's
+    // bounds. Here the second probe runs against the array the first probe
+    // already spliced, so it can resolve to a different, further-out entry
+    // and merge more. Concretely, on { (2..4)=c, [4..6)=c }:
+    //
+    //   putCoalescing((4..6), c)   Guava: unchanged   this: [2..6)=c
+    //
+    // This is safe rather than merely tolerated: a merge only extends across
+    // neighbours carrying the SAME value, and two connected ranges leave no
+    // room for a third entry between them, so no differently-valued entry
+    // can ever be clobbered. Every point mapping is preserved. It is also
+    // better for this backing store — fewer entries means smaller splices on
+    // every later write.
+    //
+    // What it costs: entry granularity after `putCoalescing` is NOT a record
+    // of what was put. Do not treat `getEntry(k)` or `asMapOfRanges()` as
+    // "the ranges I inserted"; they are the current partition.
     let next = range;
     if (shouldPutCoalescing) {
       const entries = this.rangeValues;
 
       const below =
-        this.firstLowerCutAtOrAfter(
-          scalar,
-          range.lowerEndpoint,
-          RangeMap.lowerCutSide(range)
-        ) - 1;
+        this.firstLowerCutAtOrAfter(scalar, range.lowerEndpoint, RangeMap.lowerCutSide(range)) - 1;
       if (
         below >= 0 &&
         this.eq(value, entries[below].value) &&
@@ -743,11 +818,7 @@ export class RangeMap<T, P = Comparable, R extends Range<any> = DefaultRange<P>>
       }
 
       const floor =
-        this.firstLowerCutAfter(
-          scalar,
-          range.upperEndpoint,
-          RangeMap.upperCutSide(range)
-        ) - 1;
+        this.firstLowerCutAfter(scalar, range.upperEndpoint, RangeMap.upperCutSide(range)) - 1;
       if (
         floor >= 0 &&
         this.eq(value, entries[floor].value) &&
@@ -756,6 +827,13 @@ export class RangeMap<T, P = Comparable, R extends Range<any> = DefaultRange<P>>
         next = next.span(entries[floor].range) as R;
         entries.splice(floor, 1);
       }
+    }
+
+    // Nothing absorbed and the range itself is still empty: no-op, exactly as
+    // `put` did at the top. This is the guard that keeps the empty-bridge
+    // support above from storing an empty entry — the case that started this.
+    if (next.isEmpty()) {
+      return;
     }
 
     this.spliceOverlapping(next, { range: next, value });

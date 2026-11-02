@@ -44,9 +44,7 @@ describe("inverted ranges are rejected at construction", () => {
   it("refuses it on the exact (bigint) domain too", () => {
     for (const [lo, up] of BOUNDS) {
       expect(() => R.openClosed(b(10), b(9))).toThrowError(/greater than upper/);
-      expect(() => new Range(b(5), lo, b(1), up, bigintScalar)).toThrowError(
-        /greater than upper/
-      );
+      expect(() => new Range(b(5), lo, b(1), up, bigintScalar)).toThrowError(/greater than upper/);
     }
   });
 
@@ -67,9 +65,9 @@ describe("inverted ranges are rejected at construction", () => {
       message = (e as Error).message;
     }
     expect(message).toBe(
-      'Range: lower endpoint (0.5) is greater than upper endpoint (-0.5). An inverted range ' +
-        'contains nothing but is not isEmpty(), so no guard built on isEmpty() can catch it and it ' +
-        'cannot be given a consistent meaning. Put the endpoints the right way round, or use an ' +
+      "Range: lower endpoint (0.5) is greater than upper endpoint (-0.5). An inverted range " +
+        "contains nothing but is not isEmpty(), so no guard built on isEmpty() can catch it and it " +
+        "cannot be given a consistent meaning. Put the endpoints the right way round, or use an " +
         'empty range such as [v..v) if you mean "nothing".'
     );
   });
@@ -163,12 +161,8 @@ describe("inverted ranges are rejected at construction", () => {
 
   it("cannot be smuggled into a RangeMap through put or putCoalescing", () => {
     const m = new RangeMap<string>();
-    expect(() => m.put(NumberRange.closedOpen(0.5, -0.5), "x")).toThrowError(
-      /greater than upper/
-    );
-    expect(() => m.putCoalescing(NumberRange.closed(9, 1), "y")).toThrowError(
-      /greater than upper/
-    );
+    expect(() => m.put(NumberRange.closedOpen(0.5, -0.5), "x")).toThrowError(/greater than upper/);
+    expect(() => m.putCoalescing(NumberRange.closed(9, 1), "y")).toThrowError(/greater than upper/);
     // Nothing landed: the map is still empty, so span() has nothing to misreport.
     expect(m.span()).toBeNull();
     expect(m.asMapOfRanges().size).toBe(0);
@@ -186,9 +180,7 @@ describe("inverted ranges are rejected at construction", () => {
 
   it("leaves the map span honest on the exact domain", () => {
     const m = new RangeMap<string, BigIntPoint>();
-    expect(() => m.put(R.closedOpen(b(100), b(0)), "bogus")).toThrowError(
-      /greater than upper/
-    );
+    expect(() => m.put(R.closedOpen(b(100), b(0)), "bogus")).toThrowError(/greater than upper/);
     expect(m.span()).toBeNull();
   });
 

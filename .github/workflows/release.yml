@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Run everything except the actual stage submission'
+        description: "Run everything except the actual stage submission"
         type: boolean
         default: false
 
@@ -43,8 +43,8 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
-          node-version: '26'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: "26"
+          registry-url: "https://registry.npmjs.org"
 
       - name: Show toolchain
         run: |

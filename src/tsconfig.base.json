@@ -3,12 +3,6 @@
   "compilerOptions": {
     "noEmit": false
   },
-  "include": [
-    "./**/*.ts"
-  ],
-  "exclude": [
-    "./**/*.spec.ts",
-    "test.ts",
-    "karma.conf.ts"
-  ]
+  "include": ["./**/*.ts"],
+  "exclude": ["./**/*.spec.ts", "test.ts", "karma.conf.ts"]
 }

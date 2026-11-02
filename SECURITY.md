@@ -14,10 +14,10 @@ impact is (as distinct from the theoretical one).
 
 ## Supported versions
 
-| Version | Supported |
-| --- | --- |
-| 1.0.x | ✅ |
-| < 1.0 | ❌ — no backport capacity. Upgrade. |
+| Version | Supported                           |
+| ------- | ----------------------------------- |
+| 1.0.x   | ✅                                  |
+| < 1.0   | ❌ — no backport capacity. Upgrade. |
 
 This is a small, single-maintainer library. We cannot promise to patch old lines,
 and we would rather say so than leave you assuming coverage that does not exist.
@@ -51,9 +51,9 @@ and does not protect against.
   minus `.gitignore`: `src/`, every tsconfig, and the `dist/karma` test artifacts
   (0.1.8: 81 files / 662 KiB unpacked). Verify rather than trusting this file —
   `npm pack --dry-run` for what this tree produces, `npm view range-ts
-  dist.fileCount` for what is live.
+dist.fileCount` for what is live.
 - **`exports` map blocks deep imports** — only `.` and `./package.json` resolve.
-  This limits what a compromised *consumer* of the package can reach into, and
+  This limits what a compromised _consumer_ of the package can reach into, and
   keeps internals reorganisable.
 - **No runtime dependencies.** `dependencies` is empty. Installing `range-ts`
   adds no transitive packages to your tree. This is the strongest supply-chain
@@ -68,11 +68,11 @@ and does not protect against.
 - **`--provenance`** is used where the registry supports it, so the published
   artifact is cryptographically linked to this repository and workflow.
 
-### What these controls do *not* do
+### What these controls do _not_ do
 
 Being precise here matters more than listing badges:
 
-- `ignore-scripts` protects the *install* step. It does not protect against
+- `ignore-scripts` protects the _install_ step. It does not protect against
   malicious code in a package that is already unpacked, nor against a compromised
   maintainer account.
 - `min-release-age` delays adoption; it does not vet.

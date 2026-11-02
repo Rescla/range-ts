@@ -6,6 +6,7 @@ import {
   numberScalar,
 } from "./scalars";
 import { NumberRange } from "../number-range/number-range";
+import { defineRange } from "../range/range";
 
 /**
  * Unit-level coverage of the three shipped scalars. The range-level specs exercise
@@ -116,7 +117,9 @@ describe("bigintScalar", () => {
       [BIGINT_PLUS_INFINITY, BigInt("-99999999999999999999"), 1],
     ];
     for (const [a, b, want] of cases) {
-      expect(bigintScalar.compare(a, b)).withContext(`${String(a)} vs ${String(b)}`).toBe(want);
+      expect(bigintScalar.compare(a, b))
+        .withContext(`${String(a)} vs ${String(b)}`)
+        .toBe(want);
     }
   });
 
@@ -154,6 +157,60 @@ describe("bigintScalar", () => {
     expect(() => bigintScalar.pred!(BIGINT_PLUS_INFINITY)).toThrowError(
       /plusInfinity has no predecessor within the finite domain/
     );
+  });
+});
+
+/**
+ * `bigintScalar` shipped without the operand gate that `comparableScalar` and
+ * `numberScalar` both have. Its `compare` fell through `<`/`>` to a bare
+ * `return 0`, and a coercion that lands on NaN makes BOTH relational tests
+ * false — so it reported `compare(4n, "x") === 0`. A bigint range therefore
+ * `contains("x")`, and the cross-domain guard in `Range` (which fires on an
+ * UNORDERED result) could never fire, because this comparator never produced
+ * one. Pinned here so the fall-through cannot come back.
+ */
+describe("bigintScalar does not report garbage as equal", () => {
+  it("returns NaN for a string operand instead of 0", () => {
+    expect(bigintScalar.compare(4n, "x" as any)).toBeNaN();
+    expect(bigintScalar.compare("x" as any, 4n)).toBeNaN();
+  });
+
+  it("returns NaN for null and undefined rather than ordering them", () => {
+    expect(bigintScalar.compare(4n, null as any)).toBeNaN();
+    expect(bigintScalar.compare(undefined as any, 4n)).toBeNaN();
+  });
+
+  it("returns NaN for NaN, which is unordered rather than equal to a point", () => {
+    expect(bigintScalar.compare(4n, NaN as any)).toBeNaN();
+    expect(bigintScalar.compare(NaN as any, 4n)).toBeNaN();
+    expect(bigintScalar.compare(NaN as any, NaN as any)).toBeNaN();
+  });
+
+  it("still reports numeric equality across bigint and number: 4n == 4", () => {
+    // This is the case a naive `a === b ? 0 : NaN` tail would have broken:
+    // `4n === 4` is false while `4n == 4` is true, and JS defines that
+    // cross-type ordering, so it must still read as equal.
+    expect(bigintScalar.compare(4n, 4 as any)).toBe(0);
+    expect(bigintScalar.compare(4 as any, 4n)).toBe(0);
+  });
+
+  it("still orders bigint against number past 2^53 exactly", () => {
+    expect(bigintScalar.compare(9007199254740993n, 9007199254740992 as any)).toBe(1);
+    expect(bigintScalar.compare(9007199254740992 as any, 9007199254740993n)).toBe(-1);
+  });
+
+  it("keeps the sentinels ordered ahead of the operand gate", () => {
+    expect(bigintScalar.compare(BIGINT_PLUS_INFINITY, "x" as any)).toBe(1);
+    expect(bigintScalar.compare(BIGINT_MINUS_INFINITY, 1n)).toBe(-1);
+    expect(bigintScalar.compare(BIGINT_PLUS_INFINITY, BIGINT_PLUS_INFINITY)).toBe(0);
+  });
+
+  it("a bigint range does not contain a non-numeric key", () => {
+    const R = defineRange(bigintScalar);
+    const r = R.closed(1n, 10n);
+    expect(r.contains("x" as any)).toBe(false);
+    expect(r.contains(NaN as any)).toBe(false);
+    expect(r.contains(5n)).toBe(true);
   });
 });
 

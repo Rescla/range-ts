@@ -1,5 +1,10 @@
 import { BoundType } from "../core/bound-type";
-import { BIGINT_MINUS_INFINITY, BIGINT_PLUS_INFINITY, bigintScalar } from "../core/scalars";
+import {
+  BIGINT_MINUS_INFINITY,
+  BIGINT_PLUS_INFINITY,
+  bigintScalar,
+  comparableScalar,
+} from "../core/scalars";
 import { defineRange } from "./range";
 
 const R = defineRange(bigintScalar);
@@ -128,19 +133,47 @@ describe("Range<T> bound semantics", () => {
     it("keeps the more inclusive end", () => {
       // Upper bound is the HIGHER of the two, keeping that side's own bound type:
       // 5 CLOSED vs 9 OPEN -> 9 OPEN, not 9 CLOSED.
-      expect(R.closed(b(1), b(5)).span(R.open(b(1), b(9))).toString()).toBe("[1..9)");
-      expect(R.open(b(1), b(5)).span(R.closed(b(1), b(9))).toString()).toBe("[1..9]");
-      expect(R.closedOpen(b(1), b(5)).span(R.closed(b(1), b(9))).toString()).toBe("[1..9]");
+      expect(
+        R.closed(b(1), b(5))
+          .span(R.open(b(1), b(9)))
+          .toString()
+      ).toBe("[1..9)");
+      expect(
+        R.open(b(1), b(5))
+          .span(R.closed(b(1), b(9)))
+          .toString()
+      ).toBe("[1..9]");
+      expect(
+        R.closedOpen(b(1), b(5))
+          .span(R.closed(b(1), b(9)))
+          .toString()
+      ).toBe("[1..9]");
     });
 
     it("is the wider of two nested ranges", () => {
-      expect(R.closed(b(1), b(10)).span(R.closed(b(3), b(4))).toString()).toBe("[1..10]");
-      expect(R.closed(b(3), b(4)).span(R.closed(b(1), b(10))).toString()).toBe("[1..10]");
+      expect(
+        R.closed(b(1), b(10))
+          .span(R.closed(b(3), b(4)))
+          .toString()
+      ).toBe("[1..10]");
+      expect(
+        R.closed(b(3), b(4))
+          .span(R.closed(b(1), b(10)))
+          .toString()
+      ).toBe("[1..10]");
     });
 
     it("reaches the whole line when either side is unbounded", () => {
-      expect(R.all().span(R.closed(b(1), b(2))).toString()).toBe("(-∞..+∞)");
-      expect(R.closed(b(1), b(2)).span(R.atLeast(b(9))).toString()).toBe("[1..+∞)");
+      expect(
+        R.all()
+          .span(R.closed(b(1), b(2)))
+          .toString()
+      ).toBe("(-∞..+∞)");
+      expect(
+        R.closed(b(1), b(2))
+          .span(R.atLeast(b(9)))
+          .toString()
+      ).toBe("[1..+∞)");
     });
   });
 
@@ -171,6 +204,25 @@ describe("Range<T> bound semantics", () => {
         isMinusInfinity: (x: number) => x === -Infinity,
       });
       expect(noStep.closed(1, 5).isAdjacentTo(noStep.closed(6, 9))).toBe(false);
+    });
+
+    it("throws across two scalars that do not order, instead of guessing", () => {
+      // `isAdjacentTo` compares with THIS range's scalar against the other
+      // range's endpoints. It used to do that with no cross-domain guard at
+      // all, so a mismatched pair silently answered `false` where every other
+      // range operation (`intersection`, `encloses`, `isConnected`) throws.
+      // Same guard, same message, reached through the same helper.
+      const N = defineRange(comparableScalar);
+      const foreign = N.closed("9" as any, "10" as any);
+      expect(() => R.closed(b(1), b(5)).isAdjacentTo(foreign as any)).toThrowError(
+        /different Scalar implementations/
+      );
+    });
+
+    it("does not throw for an unordered operand on the SAME scalar", () => {
+      // The guard needs a scalar MISMATCH as well as an unordered result, so a
+      // same-domain NaN stays a plain `false` rather than an exception.
+      expect(R.closed(b(1), b(5)).isAdjacentTo(R.closed(NaN as any, b(9)))).toBe(false);
     });
   });
 
@@ -207,28 +259,56 @@ describe("Range<T> bound semantics", () => {
       // Equal lower endpoints: the merged bound must be OPEN if EITHER is OPEN,
       // regardless of which range is `this`. The upper end is untouched here
       // (5 CLOSED on the inner range either way).
-      expect(R.open(b(1), b(10)).intersection(R.closed(b(1), b(5)))!.toString()).toBe("(1..5]");
-      expect(R.closed(b(1), b(10)).intersection(R.open(b(1), b(5)))!.toString()).toBe("(1..5)");
+      expect(
+        R.open(b(1), b(10))
+          .intersection(R.closed(b(1), b(5)))!
+          .toString()
+      ).toBe("(1..5]");
+      expect(
+        R.closed(b(1), b(10))
+          .intersection(R.open(b(1), b(5)))!
+          .toString()
+      ).toBe("(1..5)");
     });
 
     it("intersection takes the OPEN upper bound whichever side supplies it", () => {
-      expect(R.closedOpen(b(1), b(10)).intersection(R.closed(b(5), b(10)))!.toString()).toBe(
-        "[5..10)"
-      );
-      expect(R.closed(b(1), b(10)).intersection(R.closedOpen(b(5), b(10)))!.toString()).toBe(
-        "[5..10)"
-      );
+      expect(
+        R.closedOpen(b(1), b(10))
+          .intersection(R.closed(b(5), b(10)))!
+          .toString()
+      ).toBe("[5..10)");
+      expect(
+        R.closed(b(1), b(10))
+          .intersection(R.closedOpen(b(5), b(10)))!
+          .toString()
+      ).toBe("[5..10)");
     });
 
     it("span merges an equal endpoint toward CLOSED (span is maximal)", () => {
       // Unlike intersection, which tightens, span widens: at an equal endpoint
       // CLOSED wins over OPEN because the span must contain every point either
       // range had.
-      expect(R.open(b(1), b(5)).span(R.closed(b(1), b(9))).toString()).toBe("[1..9]");
-      expect(R.closed(b(1), b(5)).span(R.open(b(1), b(9))).toString()).toBe("[1..9)");
-      expect(R.closedOpen(b(1), b(5)).span(R.closed(b(1), b(9))).toString()).toBe("[1..9]");
+      expect(
+        R.open(b(1), b(5))
+          .span(R.closed(b(1), b(9)))
+          .toString()
+      ).toBe("[1..9]");
+      expect(
+        R.closed(b(1), b(5))
+          .span(R.open(b(1), b(9)))
+          .toString()
+      ).toBe("[1..9)");
+      expect(
+        R.closedOpen(b(1), b(5))
+          .span(R.closed(b(1), b(9)))
+          .toString()
+      ).toBe("[1..9]");
       // Both-open at the shared end stays open — there is nothing to include.
-      expect(R.open(b(1), b(5)).span(R.open(b(1), b(9))).toString()).toBe("(1..9)");
+      expect(
+        R.open(b(1), b(5))
+          .span(R.open(b(1), b(9)))
+          .toString()
+      ).toBe("(1..9)");
     });
 
     it("encloses still fails when an OPEN inner end lies outside the outer range", () => {
@@ -269,8 +349,16 @@ describe("bound-type asymmetry, continued", () => {
   it("intersection of two CLOSED equal ends stays CLOSED", () => {
     // Guards the OPEN-merge in intersection: it must not fire when neither side
     // is open, or every closed intersection would silently lose its endpoint.
-    expect(R.closed(b(1), b(10)).intersection(R.closed(b(5), b(10)))!.toString()).toBe("[5..10]");
-    expect(R.closed(b(1), b(10)).intersection(R.closed(b(1), b(5)))!.toString()).toBe("[1..5]");
+    expect(
+      R.closed(b(1), b(10))
+        .intersection(R.closed(b(5), b(10)))!
+        .toString()
+    ).toBe("[5..10]");
+    expect(
+      R.closed(b(1), b(10))
+        .intersection(R.closed(b(1), b(5)))!
+        .toString()
+    ).toBe("[1..5]");
   });
 
   it("isAdjacentTo is false when a step runs off an infinity into a finite end", () => {
@@ -284,8 +372,20 @@ describe("bound-type asymmetry, continued", () => {
   });
 
   it("span merges an equal upper endpoint toward CLOSED from either side", () => {
-    expect(R.open(b(1), b(10)).span(R.closed(b(5), b(10))).toString()).toBe("(1..10]");
-    expect(R.closed(b(1), b(10)).span(R.open(b(5), b(10))).toString()).toBe("[1..10]");
-    expect(R.closed(b(1), b(10)).span(R.closed(b(5), b(10))).toString()).toBe("[1..10]");
+    expect(
+      R.open(b(1), b(10))
+        .span(R.closed(b(5), b(10)))
+        .toString()
+    ).toBe("(1..10]");
+    expect(
+      R.closed(b(1), b(10))
+        .span(R.open(b(5), b(10)))
+        .toString()
+    ).toBe("[1..10]");
+    expect(
+      R.closed(b(1), b(10))
+        .span(R.closed(b(5), b(10)))
+        .toString()
+    ).toBe("[1..10]");
   });
 });
